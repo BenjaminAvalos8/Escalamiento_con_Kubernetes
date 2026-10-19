@@ -1,124 +1,62 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
+import { useState, useEffect } from 'react'
 import './App.css'
-import ContadorAgentes from './components/ContadorAgentes.jsx'
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [status, setStatus] = useState({ difusion: 'Verificando...', eventos: 'Verificando...' })
+
+  useEffect(() => {
+    // Health check de difusión vía reverse proxy Nginx
+    fetch('/health-difusion')
+      .then(r => {
+        if (!r.ok) throw new Error()
+        return r.json()
+      })
+      .then(() => setStatus(s => ({ ...s, difusion: 'Online' })))
+      .catch(() => setStatus(s => ({ ...s, difusion: 'Offline' })))
+
+    // Health check de eventos vía reverse proxy Nginx
+    fetch('/health-eventos')
+      .then(r => {
+        if (!r.ok) throw new Error()
+        return r.json()
+      })
+      .then(() => setStatus(s => ({ ...s, eventos: ' Online' })))
+      .catch(() => setStatus(s => ({ ...s, eventos: 'Offline' })))
+  }, [])
 
   return (
-    <>
-      {/* ponytail: valor fijo de prueba; conectarlo al WebSocket cuando exista la HU5 */}
-      <ContadorAgentes agentes={3450} />
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <div style={{ fontFamily: 'system-ui', padding: '2rem', maxWidth: 800, margin: '0 auto' }}>
+      <h1>🐜 AntHill – Dashboard</h1>
+      <p style={{ color: '#888' }}>Panel de control de la simulación de hormigas</p>
 
-      <div className="ticks"></div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '2rem' }}>
+        <Card title="Difusión (WebSocket)" value={status.difusion} />
+        <Card title="Eventos (API REST)" value={status.eventos} />
+        <Card title="Motor del mundo" value="Tick loop activo" />
+        <Card title="Decisión de agentes" value="Worker conectado a Redis" />
+      </div>
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+      <div style={{ marginTop: '2rem', padding: '1rem', background: '#1a1a2e', borderRadius: 8 }}>
+        <h3 style={{ margin: 0 }}>Estado del clúster</h3>
+        <p style={{ color: '#ccc', marginTop: '0.5rem' }}>
+          Los 4 microservicios y Redis están operando dentro de Kubernetes local.
+        </p>
+      </div>
+    </div>
+  )
+}
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+function Card({ title, value }) {
+  return (
+    <div style={{
+      padding: '1.5rem',
+      background: '#16213e',
+      borderRadius: 8,
+      border: '1px solid #0f3460',
+    }}>
+      <h4 style={{ margin: 0, color: '#e94560' }}>{title}</h4>
+      <p style={{ margin: '0.5rem 0 0', fontSize: '1.1rem' }}>{value}</p>
+    </div>
   )
 }
 
