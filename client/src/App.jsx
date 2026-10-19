@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import './App.css'
+import ContadorAgentes from './components/ContadorAgentes.jsx'
+import MetricasInfraestructura from './components/MetricasInfraestructura.jsx'
 
 function App() {
   const [status, setStatus] = useState({ difusion: 'Verificando...', eventos: 'Verificando...' })
@@ -26,6 +28,12 @@ function App() {
 
   return (
     <div style={{ fontFamily: 'system-ui', padding: '2rem', maxWidth: 800, margin: '0 auto' }}>
+      {/* ponytail: valor fijo de prueba de HU6; conectar a WS en HU5 */}
+      <ContadorAgentes agentes={3450} />
+
+      {/* ponytail: réplicas de pods de decisión de HU7; conectar dinámicamente en HU8 cuando el HPA escale */}
+      <MetricasInfraestructura replicasDecision={1} />
+
       <h1>🐜 AntHill – Dashboard</h1>
       <p style={{ color: '#888' }}>Panel de control de la simulación de hormigas</p>
 
@@ -33,7 +41,7 @@ function App() {
         <Card title="Difusión (WebSocket)" value={status.difusion} />
         <Card title="Eventos (API REST)" value={status.eventos} />
         <Card title="Motor del mundo" value="Tick loop activo" />
-        <Card title="Decisión de agentes" value="Worker conectado a Redis" />
+        <Card title="Decisión de agentes" value="1 Pod activo (conectado a Redis)" />
       </div>
 
       <div style={{ marginTop: '2rem', padding: '1rem', background: '#1a1a2e', borderRadius: 8 }}>

@@ -167,7 +167,7 @@ spec:
     spec:
       containers:
         - name: client
-          image: anthill-client:v2
+          image: anthill-client:v3
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80
