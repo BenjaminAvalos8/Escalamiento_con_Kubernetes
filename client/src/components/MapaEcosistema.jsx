@@ -19,8 +19,36 @@ export default function MapaEcosistema({
   // Estado minimo para re-render de UI
   const [renderTrigger, setRenderTrigger] = useState(0)
   const [isDraggingState, setIsDraggingState] = useState(false)
+  const animAgentesRef = useRef(new Map())
 
   const BASE_CELL = 12
+
+  // Sincronizar objetivos de animacion cuando llegan nuevos datos del servidor
+  useEffect(() => {
+    const currentMap = animAgentesRef.current
+    const activeIds = new Set()
+
+    for (let i = 0; i < agentes.length; i++) {
+      const a = agentes[i]
+      activeIds.add(a.id)
+      const p = currentMap.get(a.id)
+      if (!p) {
+        currentMap.set(a.id, { x: a.x, y: a.y, targetX: a.x, targetY: a.y })
+      } else {
+        p.targetX = a.x
+        p.targetY = a.y
+      }
+    }
+
+    // Limpiar agentes que hayan sido purgados
+    if (currentMap.size > agentes.length) {
+      for (const id of currentMap.keys()) {
+        if (!activeIds.has(id)) {
+          currentMap.delete(id)
+        }
+      }
+    }
+  }, [agentes])
 
   // Centrar el mundo al inicio
   const centerWorld = useCallback(() => {
@@ -136,90 +164,129 @@ export default function MapaEcosistema({
     }
   }
 
-  // Renderizado en Canvas
+  // Bucle de animacion continuo a 60fps (Interpolacion suave y renderizado)
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
-    const cw = canvas.width
-    const ch = canvas.height
+    let animationFrameId
 
-    const zoom = zoomRef.current
-    const camera = cameraRef.current
-    const cellSize = BASE_CELL * zoom
+    const render = () => {
+      const cw = canvas.width
+      const ch = canvas.height
+      const zoom = zoomRef.current
+      const camera = cameraRef.current
+      const cellSize = BASE_CELL * zoom
 
-    // Fondo del viewport
-    ctx.fillStyle = '#0b0f19'
-    ctx.fillRect(0, 0, cw, ch)
+      // 1. Interpolacion suave de posiciones (Lerp)
+      for (const p of animAgentesRef.current.values()) {
+        p.x += (p.targetX - p.x) * 0.18
+        p.y += (p.targetY - p.y) * 0.18
+      }
 
-    // Culling: rangos de celdas visibles en pantalla
-    const startCol = Math.max(0, Math.floor(-camera.x / cellSize))
-    const endCol = Math.min(ancho, Math.ceil((cw - camera.x) / cellSize))
-    const startRow = Math.max(0, Math.floor(-camera.y / cellSize))
-    const endRow = Math.min(alto, Math.ceil((ch - camera.y) / cellSize))
+      // 2. Fondo del viewport
+      ctx.fillStyle = '#0b0f19'
+      ctx.fillRect(0, 0, cw, ch)
 
-    // Fondo del mundo 1000x1000
-    const worldScreenX = camera.x
-    const worldScreenY = camera.y
-    const worldScreenW = ancho * cellSize
-    const worldScreenH = alto * cellSize
+      // Culling: rangos de celdas visibles en pantalla
+      const startCol = Math.max(0, Math.floor(-camera.x / cellSize))
+      const endCol = Math.min(ancho, Math.ceil((cw - camera.x) / cellSize))
+      const startRow = Math.max(0, Math.floor(-camera.y / cellSize))
+      const endRow = Math.min(alto, Math.ceil((ch - camera.y) / cellSize))
 
-    ctx.fillStyle = '#0f172a'
-    ctx.fillRect(worldScreenX, worldScreenY, worldScreenW, worldScreenH)
+      // Fondo del mundo 1000x1000
+      const worldScreenX = camera.x
+      const worldScreenY = camera.y
+      const worldScreenW = ancho * cellSize
+      const worldScreenH = alto * cellSize
 
-    // Nido central (coordenadas 500, 500)
-    const nestRadius = 25 * cellSize
-    const nestScreenX = camera.x + 500 * cellSize
-    const nestScreenY = camera.y + 500 * cellSize
+      ctx.fillStyle = '#0f172a'
+      ctx.fillRect(worldScreenX, worldScreenY, worldScreenW, worldScreenH)
 
-    ctx.beginPath()
-    ctx.arc(nestScreenX, nestScreenY, nestRadius, 0, Math.PI * 2)
-    ctx.fillStyle = 'rgba(30, 41, 59, 0.7)'
-    ctx.fill()
-    ctx.strokeStyle = '#0284c7'
-    ctx.lineWidth = 1.5
-    ctx.stroke()
+      // Nido central (coordenadas 500, 500)
+      const nestRadius = 25 * cellSize
+      const nestScreenX = camera.x + 500 * cellSize
+      const nestScreenY = camera.y + 500 * cellSize
 
-    // Cuadricula del tamano exacto de los puntos (cuando el zoom lo amerita)
-    if (cellSize >= 6) {
-      ctx.strokeStyle = 'rgba(51, 65, 85, 0.35)'
-      ctx.lineWidth = 0.75
       ctx.beginPath()
-
-      for (let col = startCol; col <= endCol; col++) {
-        const x = camera.x + col * cellSize
-        ctx.moveTo(x, camera.y + startRow * cellSize)
-        ctx.lineTo(x, camera.y + endRow * cellSize)
-      }
-      for (let row = startRow; row <= endRow; row++) {
-        const y = camera.y + row * cellSize
-        ctx.moveTo(camera.x + startCol * cellSize, y)
-        ctx.lineTo(camera.x + endCol * cellSize, y)
-      }
+      ctx.arc(nestScreenX, nestScreenY, nestRadius, 0, Math.PI * 2)
+      ctx.fillStyle = 'rgba(30, 41, 59, 0.7)'
+      ctx.fill()
+      ctx.strokeStyle = '#0284c7'
+      ctx.lineWidth = 1.5
       ctx.stroke()
-    }
 
-    // Borde delimitador del mundo
-    ctx.strokeStyle = '#38bdf8'
-    ctx.lineWidth = 2
-    ctx.strokeRect(worldScreenX, worldScreenY, worldScreenW, worldScreenH)
-
-    // Dibujar hormigas
-    ctx.fillStyle = '#e94560'
-    const antRadius = Math.max(2, cellSize * 0.4)
-
-    for (let i = 0; i < agentes.length; i++) {
-      const a = agentes[i]
-      const px = camera.x + a.x * cellSize + cellSize / 2
-      const py = camera.y + a.y * cellSize + cellSize / 2
-
-      if (px >= -antRadius && px <= cw + antRadius && py >= -antRadius && py <= ch + antRadius) {
+      // Cuadricula del tamano exacto de los puntos (cuando el zoom lo amerita)
+      if (cellSize >= 6) {
+        ctx.strokeStyle = 'rgba(51, 65, 85, 0.35)'
+        ctx.lineWidth = 0.75
         ctx.beginPath()
-        ctx.arc(px, py, antRadius, 0, Math.PI * 2)
-        ctx.fill()
+
+        for (let col = startCol; col <= endCol; col++) {
+          const x = camera.x + col * cellSize
+          ctx.moveTo(x, camera.y + startRow * cellSize)
+          ctx.lineTo(x, camera.y + endRow * cellSize)
+        }
+        for (let row = startRow; row <= endRow; row++) {
+          const y = camera.y + row * cellSize
+          ctx.moveTo(camera.x + startCol * cellSize, y)
+          ctx.lineTo(camera.x + endCol * cellSize, y)
+        }
+        ctx.stroke()
       }
+
+      // Borde delimitador del mundo
+      ctx.strokeStyle = '#38bdf8'
+      ctx.lineWidth = 2
+      ctx.strokeRect(worldScreenX, worldScreenY, worldScreenW, worldScreenH)
+
+      // 3. Dibujar hormigas e identificar casillas compartidas
+      ctx.fillStyle = '#e94560'
+      const antRadius = Math.max(2, cellSize * 0.4)
+      const cellCounts = cellSize >= 14 ? new Map() : null
+
+      for (const p of animAgentesRef.current.values()) {
+        const px = camera.x + p.x * cellSize + cellSize / 2
+        const py = camera.y + p.y * cellSize + cellSize / 2
+
+        if (px >= -antRadius && px <= cw + antRadius && py >= -antRadius && py <= ch + antRadius) {
+          ctx.beginPath()
+          ctx.arc(px, py, antRadius, 0, Math.PI * 2)
+          ctx.fill()
+
+          if (cellCounts) {
+            const cx = Math.round(p.targetX)
+            const cy = Math.round(p.targetY)
+            const key = `${cx},${cy}`
+            cellCounts.set(key, (cellCounts.get(key) || 0) + 1)
+          }
+        }
+      }
+
+      // 4. Indicador numerico en esquina inferior derecha para casillas con multiples hormigas
+      if (cellCounts && cellSize >= 14) {
+        const fontSize = Math.min(10, Math.max(8, Math.floor(cellSize * 0.35)))
+        ctx.font = `bold ${fontSize}px ui-monospace, Consolas, monospace`
+        ctx.fillStyle = '#38bdf8'
+        ctx.textAlign = 'right'
+        ctx.textBaseline = 'bottom'
+
+        for (const [key, count] of cellCounts.entries()) {
+          if (count > 1) {
+            const [cx, cy] = key.split(',').map(Number)
+            const textX = camera.x + (cx + 1) * cellSize - 2
+            const textY = camera.y + (cy + 1) * cellSize - 1
+            ctx.fillText(count, textX, textY)
+          }
+        }
+      }
+
+      animationFrameId = requestAnimationFrame(render)
     }
-  }, [agentes, ancho, alto, renderTrigger])
+
+    animationFrameId = requestAnimationFrame(render)
+    return () => cancelAnimationFrame(animationFrameId)
+  }, [ancho, alto])
 
   return (
     <canvas
