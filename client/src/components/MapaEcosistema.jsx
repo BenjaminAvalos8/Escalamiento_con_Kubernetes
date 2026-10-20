@@ -9,33 +9,45 @@ export default function MapaEcosistema({
 }) {
   const canvasRef = useRef(null)
 
-  // Estado de cámara y zoom
-  const [zoom, setZoom] = useState(0.5)
-  const [camera, setCamera] = useState({ x: 0, y: 0 })
-  const [isDragging, setIsDragging] = useState(false)
+  // Referencias mutables para el bucle de eventos y zoom no pasivo
+  const zoomRef = useRef(0.5)
+  const cameraRef = useRef({ x: 0, y: 0 })
+  const isDraggingRef = useRef(false)
   const dragStartRef = useRef({ x: 0, y: 0 })
   const hasCenteredRef = useRef(false)
 
+  // Estado minimo para re-render de UI
+  const [, setRenderTrigger] = useState(0)
+  const [isDraggingState, setIsDraggingState] = useState(false)
+
   const BASE_CELL = 12
 
-  // Redimensionar canvas al tamaño exacto de la ventana
+  // Centrar el mundo al inicio
+  const centerWorld = useCallback(() => {
+    const initialZoom = 0.5
+    const worldPx = ancho * BASE_CELL * initialZoom
+    const cx = (window.innerWidth - worldPx) / 2
+    const cy = (window.innerHeight - worldPx) / 2
+
+    zoomRef.current = initialZoom
+    cameraRef.current = { x: cx, y: cy }
+    hasCenteredRef.current = true
+    setRenderTrigger(n => n + 1)
+  }, [ancho])
+
+  // Ajuste de tamano de canvas
   const resizeCanvas = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     canvas.width = window.innerWidth
     canvas.height = window.innerHeight
 
-    // Centrar el mundo de 1000x1000 en el primer renderizado
     if (!hasCenteredRef.current) {
-      const initialZoom = 0.5
-      const worldPx = ancho * BASE_CELL * initialZoom
-      const cx = (window.innerWidth - worldPx) / 2
-      const cy = (window.innerHeight - worldPx) / 2
-      setCamera({ x: cx, y: cy })
-      setZoom(initialZoom)
-      hasCenteredRef.current = true
+      centerWorld()
+    } else {
+      setRenderTrigger(n => n + 1)
     }
-  }, [ancho])
+  }, [centerWorld])
 
   useEffect(() => {
     resizeCanvas()
@@ -43,58 +55,82 @@ export default function MapaEcosistema({
     return () => window.removeEventListener('resize', resizeCanvas)
   }, [resizeCanvas])
 
-  // Notificar al HUD sobre coordenadas de cámara
-  useEffect(() => {
+  // Notificar al HUD sobre coordenadas y zoom
+  const notifyHUD = useCallback(() => {
     if (onCameraChange && canvasRef.current) {
-      const cellSize = BASE_CELL * zoom
-      const centerX = Math.round((-camera.x + window.innerWidth / 2) / cellSize)
-      const centerY = Math.round((-camera.y + window.innerHeight / 2) / cellSize)
+      const cellSize = BASE_CELL * zoomRef.current
+      const centerX = Math.round((-cameraRef.current.x + window.innerWidth / 2) / cellSize)
+      const centerY = Math.round((-cameraRef.current.y + window.innerHeight / 2) / cellSize)
       onCameraChange({
         cellX: Math.max(0, Math.min(ancho, centerX)),
         cellY: Math.max(0, Math.min(alto, centerY)),
-        zoom: zoom.toFixed(2),
+        zoom: zoomRef.current.toFixed(2),
       })
     }
-  }, [camera, zoom, ancho, alto, onCameraChange])
+  }, [onCameraChange, ancho, alto])
+
+  // Manejo de Zoom no pasivo (bloquea el zoom del navegador en la pagina)
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const handleWheelNative = (e) => {
+      // Detener cualquier zoom o scroll del navegador web
+      e.preventDefault()
+      e.stopPropagation()
+
+      const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85
+      const newZoom = Math.min(Math.max(0.08, zoomRef.current * zoomFactor), 5.0)
+
+      const mouseX = e.clientX
+      const mouseY = e.clientY
+
+      const currentCam = cameraRef.current
+      const currentZoom = zoomRef.current
+
+      // Zoom centrado en el punto del cursor
+      const newCamX = mouseX - (mouseX - currentCam.x) * (newZoom / currentZoom)
+      const newCamY = mouseY - (mouseY - currentCam.y) * (newZoom / currentZoom)
+
+      zoomRef.current = newZoom
+      cameraRef.current = { x: newCamX, y: newCamY }
+
+      notifyHUD()
+      setRenderTrigger(n => n + 1)
+    }
+
+    // passive: false es esencial para que preventDefault funcione contra el navegador
+    canvas.addEventListener('wheel', handleWheelNative, { passive: false })
+    return () => canvas.removeEventListener('wheel', handleWheelNative)
+  }, [notifyHUD])
 
   // Control de arrastre (Pan)
   const handleMouseDown = (e) => {
-    if (e.button !== 0) return // Solo clic izquierdo
-    setIsDragging(true)
+    if (e.button !== 0) return
+    isDraggingRef.current = true
+    setIsDraggingState(true)
     dragStartRef.current = {
-      x: e.clientX - camera.x,
-      y: e.clientY - camera.y,
+      x: e.clientX - cameraRef.current.x,
+      y: e.clientY - cameraRef.current.y,
     }
   }
 
   const handleMouseMove = (e) => {
-    if (!isDragging) return
-    setCamera({
+    if (!isDraggingRef.current) return
+    cameraRef.current = {
       x: e.clientX - dragStartRef.current.x,
       y: e.clientY - dragStartRef.current.y,
-    })
+    }
+    notifyHUD()
+    setRenderTrigger(n => n + 1)
   }
 
-  const handleMouseUp = () => setIsDragging(false)
-
-  // Control de zoom con rueda del mouse
-  const handleWheel = (e) => {
-    e.preventDefault()
-    const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85
-    const newZoom = Math.min(Math.max(0.08, zoom * zoomFactor), 5.0)
-
-    const mouseX = e.clientX
-    const mouseY = e.clientY
-
-    // Zoom centrado hacia la posicion del cursor
-    const newCamX = mouseX - (mouseX - camera.x) * (newZoom / zoom)
-    const newCamY = mouseY - (mouseY - camera.y) * (newZoom / zoom)
-
-    setZoom(newZoom)
-    setCamera({ x: newCamX, y: newCamY })
+  const handleMouseUp = () => {
+    isDraggingRef.current = false
+    setIsDraggingState(false)
   }
 
-  // Bucle de renderizado en Canvas
+  // Renderizado en Canvas
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -102,13 +138,15 @@ export default function MapaEcosistema({
     const cw = canvas.width
     const ch = canvas.height
 
+    const zoom = zoomRef.current
+    const camera = cameraRef.current
     const cellSize = BASE_CELL * zoom
 
-    // Fondo oscuro espacial
+    // Fondo del viewport
     ctx.fillStyle = '#0b0f19'
     ctx.fillRect(0, 0, cw, ch)
 
-    // Limites visibles de cuadricula en pantalla (culling)
+    // Culling: rangos de celdas visibles en pantalla
     const startCol = Math.max(0, Math.floor(-camera.x / cellSize))
     const endCol = Math.min(ancho, Math.ceil((cw - camera.x) / cellSize))
     const startRow = Math.max(0, Math.floor(-camera.y / cellSize))
@@ -136,7 +174,7 @@ export default function MapaEcosistema({
     ctx.lineWidth = 1.5
     ctx.stroke()
 
-    // Dibujar cuadriculas del tamano de los puntos solo cuando el zoom lo permita
+    // Cuadricula del tamano exacto de los puntos (cuando el zoom lo amerita)
     if (cellSize >= 6) {
       ctx.strokeStyle = 'rgba(51, 65, 85, 0.35)'
       ctx.lineWidth = 0.75
@@ -155,12 +193,12 @@ export default function MapaEcosistema({
       ctx.stroke()
     }
 
-    // Borde delimitador del mundo 1000x1000
+    // Borde delimitador del mundo
     ctx.strokeStyle = '#38bdf8'
     ctx.lineWidth = 2
     ctx.strokeRect(worldScreenX, worldScreenY, worldScreenW, worldScreenH)
 
-    // Renderizar hormigas
+    // Dibujar hormigas
     ctx.fillStyle = '#e94560'
     const antRadius = Math.max(2, cellSize * 0.4)
 
@@ -169,24 +207,22 @@ export default function MapaEcosistema({
       const px = camera.x + a.x * cellSize + cellSize / 2
       const py = camera.y + a.y * cellSize + cellSize / 2
 
-      // Dibujar solo si esta dentro de la pantalla
       if (px >= -antRadius && px <= cw + antRadius && py >= -antRadius && py <= ch + antRadius) {
         ctx.beginPath()
         ctx.arc(px, py, antRadius, 0, Math.PI * 2)
         ctx.fill()
       }
     }
-  }, [agentes, camera, zoom, ancho, alto])
+  }, [agentes, ancho, alto])
 
   return (
     <canvas
       ref={canvasRef}
-      className={`mapa-canvas-full ${isDragging ? 'dragging' : ''}`}
+      className={`mapa-canvas-full ${isDraggingState ? 'dragging' : ''}`}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
-      onWheel={handleWheel}
     />
   )
 }

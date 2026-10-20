@@ -1,15 +1,17 @@
 .app-viewport {
-  position: relative;
+  position: fixed;
+  inset: 0;
   width: 100vw;
   height: 100vh;
   overflow: hidden;
 }
 
 .hud-container {
-  position: absolute;
+  position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: 10;
+  overflow: hidden;
 }
 
 .hud-interactive {
@@ -79,21 +81,25 @@
 }
 
 .hud-top-left {
-  position: absolute;
+  position: fixed;
   top: 16px;
   left: 16px;
-  width: 260px;
+  width: 270px;
+  max-width: calc(50vw - 32px);
+  z-index: 20;
 }
 
 .hud-top-right {
-  position: absolute;
+  position: fixed;
   top: 16px;
   right: 16px;
   width: 290px;
+  max-width: calc(50vw - 32px);
+  z-index: 20;
 }
 
 .hud-bottom-center {
-  position: absolute;
+  position: fixed;
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
@@ -101,6 +107,7 @@
   flex-direction: column;
   align-items: center;
   gap: 8px;
+  z-index: 20;
 }
 
 .action-bar {
@@ -152,4 +159,5 @@
   padding: 4px 12px;
   border-radius: 9999px;
   border: 1px solid rgba(51, 65, 85, 0.6);
+  pointer-events: none;
 }
