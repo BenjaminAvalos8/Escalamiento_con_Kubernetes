@@ -13,6 +13,21 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
+app.get("/metrics", async (req, res) => {
+  try {
+    const val = await redis.get("simulacion:agentes_activos");
+    const total = parseInt(val, 10) || 0;
+    res.setHeader("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
+    res.send(
+      "# HELP anthill_agentes_activos Cantidad de agentes simulados activos\n" +
+      "# TYPE anthill_agentes_activos gauge\n" +
+      `anthill_agentes_activos ${total}\n`
+    );
+  } catch (err) {
+    res.status(500).send("# ERROR\n");
+  }
+});
+
 app.get("/api/metricas/infraestructura", async (req, res) => {
   try {
     const keys = await redis.keys("heartbeat:decision:*");
@@ -33,9 +48,12 @@ app.post("/api/eventos/depredador", (req, res) => {
 });
 
 app.post("/api/admin/spawn", (req, res) => {
-  const { cantidad } = req.body;
-  console.log(`[Eventos] Spawn masivo de agentes: ${cantidad}`);
-  res.json({ status: "ok", cantidad });
+  const count = Math.max(1, Number(req.body?.cantidad) || 50);
+  redis.publish("canal:eventos:spawn", JSON.stringify({ cantidad: count })).catch((err) => {
+    console.error("[Eventos] Error publicando spawn a Redis:", err.message);
+  });
+  console.log(`[Eventos] Spawn de agentes solicitado: ${count}`);
+  res.json({ status: "ok", cantidad: count });
 });
 
 const PORT = process.env.PORT || 3000;

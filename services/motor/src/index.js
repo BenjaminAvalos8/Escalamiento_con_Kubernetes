@@ -16,13 +16,44 @@ const agentes = Array.from({ length: N }, (_, id) => ({
 console.log(`[Motor] Mundo creado con ${agentes.length} agentes`);
 
 const redis = crearClienteRedis();
+const redisSub = crearClienteRedis();
 
 async function start() {
     try {
         await redis.connect();
-        console.log("[Motor] Conectado a Redis");
+        await redis.set("simulacion:agentes_activos", agentes.length);
+        console.log("[Motor] Conectado a Redis y metrica inicial publicada");
     } catch (err) {
         console.error("[Motor] Error al conectar con Redis:", err.message);
+    }
+
+    try {
+        await redisSub.connect();
+        await redisSub.subscribe("canal:eventos:spawn", (err) => {
+            if (err) console.error("[Motor] Error al suscribirse a spawn:", err.message);
+        });
+
+        redisSub.on("message", (channel, message) => {
+            if (channel === "canal:eventos:spawn") {
+                try {
+                    const { cantidad } = JSON.parse(message);
+                    const count = Math.max(1, Number(cantidad) || 0);
+                    for (let i = 0; i < count; i++) {
+                        agentes.push({
+                            id: agentes.length,
+                            x: Math.floor(Math.random() * ANCHO),
+                            y: Math.floor(Math.random() * ALTO),
+                        });
+                    }
+                    redis.set("simulacion:agentes_activos", agentes.length);
+                    console.log(`[Motor] Spawn procesado: +${count} agentes. Total: ${agentes.length}`);
+                } catch (e) {
+                    console.error("[Motor] Error al parsear spawn:", e.message);
+                }
+            }
+        });
+    } catch (err) {
+        console.error("[Motor] Error al conectar suscriptor de spawn:", err.message);
     }
 
     let tick = 0;
