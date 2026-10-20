@@ -1,10 +1,12 @@
+const { crearClienteRedis } = require("@anthill/redis-config");
+const { CANALES_REDIS } = require("@anthill/shared-core");
+
 const N = Number(process.env.AGENTES_INICIALES ?? 100);
 if (!Number.isInteger(N) || N < 0) {
-    console.error(`[Motor] AGENTES_INICIALES inválido: "${process.env.AGENTES_INICIALES}"`);
+    console.error(`[Motor] AGENTES_INICIALES invalido: "${process.env.AGENTES_INICIALES}"`);
     process.exit(1);
 }
 
-// ponytail: mundo fijo de 100x100; moverlo a configuración cuando exista la HU del mundo
 const ANCHO = 100, ALTO = 100;
 const agentes = Array.from({ length: N }, (_, id) => ({
     id,
@@ -13,8 +15,31 @@ const agentes = Array.from({ length: N }, (_, id) => ({
 }));
 console.log(`[Motor] Mundo creado con ${agentes.length} agentes`);
 
-let tick = 0;
-setInterval(() => {
-    tick++;
-    console.log(`[Motor] Calculando Tick ${tick}... listo. Publicando a Redis (simulado)`);
-}, 1000);
+const redis = crearClienteRedis();
+
+async function start() {
+    try {
+        await redis.connect();
+        console.log("[Motor] Conectado a Redis");
+    } catch (err) {
+        console.error("[Motor] Error al conectar con Redis:", err.message);
+    }
+
+    let tick = 0;
+    setInterval(() => {
+        tick++;
+        for (const a of agentes) {
+            const dx = Math.floor(Math.random() * 3) - 1;
+            const dy = Math.floor(Math.random() * 3) - 1;
+            a.x = Math.max(0, Math.min(ANCHO - 1, a.x + dx));
+            a.y = Math.max(0, Math.min(ALTO - 1, a.y + dy));
+        }
+
+        const payload = JSON.stringify({ tick, agentes });
+        redis.publish(CANALES_REDIS.MUNDO_ESTADO, payload).catch((err) => {
+            console.error("[Motor] Error al publicar tick:", err.message);
+        });
+    }, 500);
+}
+
+start();

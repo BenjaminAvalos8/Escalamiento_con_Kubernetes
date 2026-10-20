@@ -1,54 +1,66 @@
 import { useState, useEffect } from 'react'
+import { io } from 'socket.io-client'
 import './App.css'
 import ContadorAgentes from './components/ContadorAgentes.jsx'
 import MetricasInfraestructura from './components/MetricasInfraestructura.jsx'
+import MapaEcosistema from './components/MapaEcosistema.jsx'
 
 function App() {
-  const [status, setStatus] = useState({ difusion: 'Verificando...', eventos: 'Verificando...' })
+  const [status, setStatus] = useState({ difusion: 'Desconectado', eventos: 'Verificando...' })
+  const [agentes, setAgentes] = useState([])
+  const [tick, setTick] = useState(0)
 
   useEffect(() => {
-    // Health check de difusión vía reverse proxy Nginx
-    fetch('/health-difusion')
-      .then(r => {
-        if (!r.ok) throw new Error()
-        return r.json()
-      })
-      .then(() => setStatus(s => ({ ...s, difusion: 'Online' })))
-      .catch(() => setStatus(s => ({ ...s, difusion: 'Offline' })))
-
-    // Health check de eventos vía reverse proxy Nginx
     fetch('/health-eventos')
       .then(r => {
         if (!r.ok) throw new Error()
         return r.json()
       })
-      .then(() => setStatus(s => ({ ...s, eventos: ' Online' })))
+      .then(() => setStatus(s => ({ ...s, eventos: 'Online' })))
       .catch(() => setStatus(s => ({ ...s, eventos: 'Offline' })))
+
+    const socket = io({
+      path: '/socket.io',
+      transports: ['websocket', 'polling'],
+    })
+
+    socket.on('connect', () => {
+      setStatus(s => ({ ...s, difusion: 'Online' }))
+    })
+
+    socket.on('disconnect', () => {
+      setStatus(s => ({ ...s, difusion: 'Offline' }))
+    })
+
+    socket.on('mundo:estado', (data) => {
+      if (Array.isArray(data?.agentes)) {
+        setAgentes(data.agentes)
+        setTick(data.tick || 0)
+      }
+    })
+
+    return () => {
+      socket.disconnect()
+    }
   }, [])
 
   return (
-    <div style={{ fontFamily: 'system-ui', padding: '2rem', maxWidth: 800, margin: '0 auto' }}>
-      {/* ponytail: valor fijo de prueba de HU6; conectar a WS en HU5 */}
-      <ContadorAgentes agentes={3450} />
-
-      {/* ponytail: réplicas de pods de decisión de HU7; conectar dinámicamente en HU8 cuando el HPA escale */}
+    <div style={{ fontFamily: 'system-ui', padding: '2rem', maxWidth: 900, margin: '0 auto' }}>
+      <ContadorAgentes agentes={agentes.length} />
       <MetricasInfraestructura replicasDecision={1} />
 
-      <h1>🐜 AntHill – Dashboard</h1>
-      <p style={{ color: '#888' }}>Panel de control de la simulación de hormigas</p>
+      <h1>AntHill – Dashboard</h1>
+      <p style={{ color: '#888' }}>
+        Panel de control de la simulacion | Tick actual: {tick}
+      </p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '2rem' }}>
-        <Card title="Difusión (WebSocket)" value={status.difusion} />
+      <MapaEcosistema agentes={agentes} />
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1.5rem' }}>
+        <Card title="Difusion (WebSocket)" value={status.difusion} />
         <Card title="Eventos (API REST)" value={status.eventos} />
-        <Card title="Motor del mundo" value="Tick loop activo" />
-        <Card title="Decisión de agentes" value="1 Pod activo (conectado a Redis)" />
-      </div>
-
-      <div style={{ marginTop: '2rem', padding: '1rem', background: '#1a1a2e', borderRadius: 8 }}>
-        <h3 style={{ margin: 0 }}>Estado del clúster</h3>
-        <p style={{ color: '#ccc', marginTop: '0.5rem' }}>
-          Los 4 microservicios y Redis están operando dentro de Kubernetes local.
-        </p>
+        <Card title="Motor del mundo" value={agentes.length > 0 ? 'Tick activo' : 'Esperando datos'} />
+        <Card title="Decision de agentes" value="1 Pod activo" />
       </div>
     </div>
   )
@@ -57,13 +69,13 @@ function App() {
 function Card({ title, value }) {
   return (
     <div style={{
-      padding: '1.5rem',
+      padding: '1.2rem',
       background: '#16213e',
       borderRadius: 8,
       border: '1px solid #0f3460',
     }}>
       <h4 style={{ margin: 0, color: '#e94560' }}>{title}</h4>
-      <p style={{ margin: '0.5rem 0 0', fontSize: '1.1rem' }}>{value}</p>
+      <p style={{ margin: '0.4rem 0 0', fontSize: '1rem' }}>{value}</p>
     </div>
   )
 }
