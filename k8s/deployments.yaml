@@ -1,0 +1,188 @@
+# ==============================================================================
+# MOTOR DEL MUNDO (Instancia única autoritativa)
+# ==============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: motor-deployment
+  labels:
+    app: motor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: motor
+  template:
+    metadata:
+      labels:
+        app: motor
+    spec:
+      containers:
+        - name: motor
+          image: anthill-motor:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: REDIS_HOST
+              value: "redis-service"
+            - name: REDIS_PORT
+              value: "6379"
+---
+# ==============================================================================
+# DECISIÓN DE AGENTES (Stateless, escalable)
+# ==============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: decision-deployment
+  labels:
+    app: decision
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: decision
+  template:
+    metadata:
+      labels:
+        app: decision
+    spec:
+      containers:
+        - name: decision
+          image: anthill-decision:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: REDIS_HOST
+              value: "redis-service"
+            - name: REDIS_PORT
+              value: "6379"
+---
+# ==============================================================================
+# DIFUSIÓN EN VIVO (WebSocket)
+# ==============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: difusion-deployment
+  labels:
+    app: difusion
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: difusion
+  template:
+    metadata:
+      labels:
+        app: difusion
+    spec:
+      containers:
+        - name: difusion
+          image: anthill-difusion:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 4000
+          env:
+            - name: PORT
+              value: "4000"
+            - name: REDIS_HOST
+              value: "redis-service"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: difusion-service
+  labels:
+    app: difusion
+spec:
+  type: ClusterIP
+  selector:
+    app: difusion
+  ports:
+    - port: 4000
+      targetPort: 4000
+---
+# ==============================================================================
+# EVENTOS (API REST)
+# ==============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eventos-deployment
+  labels:
+    app: eventos
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: eventos
+  template:
+    metadata:
+      labels:
+        app: eventos
+    spec:
+      containers:
+        - name: eventos
+          image: anthill-eventos:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+          env:
+            - name: PORT
+              value: "3000"
+            - name: REDIS_HOST
+              value: "redis-service"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: eventos-service
+  labels:
+    app: eventos
+spec:
+  type: ClusterIP
+  selector:
+    app: eventos
+  ports:
+    - port: 3000
+      targetPort: 3000
+---
+# ==============================================================================
+# CLIENTE (Dashboard Web)
+# ==============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: client-deployment
+  labels:
+    app: client
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: client
+  template:
+    metadata:
+      labels:
+        app: client
+    spec:
+      containers:
+        - name: client
+          image: anthill-client:v3
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: client-service
+  labels:
+    app: client
+spec:
+  type: NodePort
+  selector:
+    app: client
+  ports:
+    - port: 80
+      targetPort: 80
+      nodePort: 30080
