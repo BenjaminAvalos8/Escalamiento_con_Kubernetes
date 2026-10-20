@@ -17,7 +17,7 @@ export default function MapaEcosistema({
   const hasCenteredRef = useRef(false)
 
   // Estado minimo para re-render de UI
-  const [, setRenderTrigger] = useState(0)
+  const [renderTrigger, setRenderTrigger] = useState(0)
   const [isDraggingState, setIsDraggingState] = useState(false)
 
   const BASE_CELL = 12
@@ -105,8 +105,9 @@ export default function MapaEcosistema({
   }, [notifyHUD])
 
   // Control de arrastre (Pan)
-  const handleMouseDown = (e) => {
+  const handlePointerDown = (e) => {
     if (e.button !== 0) return
+    e.target.setPointerCapture(e.pointerId)
     isDraggingRef.current = true
     setIsDraggingState(true)
     dragStartRef.current = {
@@ -115,7 +116,7 @@ export default function MapaEcosistema({
     }
   }
 
-  const handleMouseMove = (e) => {
+  const handlePointerMove = (e) => {
     if (!isDraggingRef.current) return
     cameraRef.current = {
       x: e.clientX - dragStartRef.current.x,
@@ -125,9 +126,14 @@ export default function MapaEcosistema({
     setRenderTrigger(n => n + 1)
   }
 
-  const handleMouseUp = () => {
-    isDraggingRef.current = false
-    setIsDraggingState(false)
+  const handlePointerUp = (e) => {
+    if (isDraggingRef.current) {
+      isDraggingRef.current = false
+      setIsDraggingState(false)
+      try {
+        e.target.releasePointerCapture(e.pointerId)
+      } catch (_) {}
+    }
   }
 
   // Renderizado en Canvas
@@ -213,16 +219,16 @@ export default function MapaEcosistema({
         ctx.fill()
       }
     }
-  }, [agentes, ancho, alto])
+  }, [agentes, ancho, alto, renderTrigger])
 
   return (
     <canvas
       ref={canvasRef}
       className={`mapa-canvas-full ${isDraggingState ? 'dragging' : ''}`}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
     />
   )
 }
