@@ -9,6 +9,7 @@ function App() {
   const [status, setStatus] = useState({ difusion: 'Desconectado', eventos: 'Verificando...' })
   const [agentes, setAgentes] = useState([])
   const [tick, setTick] = useState(0)
+  const [replicasDecision, setReplicasDecision] = useState(1)
 
   useEffect(() => {
     fetch('/health-eventos')
@@ -18,6 +19,23 @@ function App() {
       })
       .then(() => setStatus(s => ({ ...s, eventos: 'Online' })))
       .catch(() => setStatus(s => ({ ...s, eventos: 'Offline' })))
+
+    const fetchMetricas = () => {
+      fetch('/api/metricas/infraestructura')
+        .then(r => {
+          if (!r.ok) throw new Error()
+          return r.json()
+        })
+        .then(d => {
+          if (typeof d?.replicasDecision === 'number') {
+            setReplicasDecision(d.replicasDecision)
+          }
+        })
+        .catch(() => {})
+    }
+
+    fetchMetricas()
+    const intervalMetricas = setInterval(fetchMetricas, 2000)
 
     const socket = io({
       path: '/socket.io',
@@ -40,6 +58,7 @@ function App() {
     })
 
     return () => {
+      clearInterval(intervalMetricas)
       socket.disconnect()
     }
   }, [])
@@ -47,7 +66,7 @@ function App() {
   return (
     <div style={{ fontFamily: 'system-ui', padding: '2rem', maxWidth: 900, margin: '0 auto' }}>
       <ContadorAgentes agentes={agentes.length} />
-      <MetricasInfraestructura replicasDecision={1} />
+      <MetricasInfraestructura replicasDecision={replicasDecision} />
 
       <h1>AntHill – Dashboard</h1>
       <p style={{ color: '#888' }}>
@@ -60,7 +79,7 @@ function App() {
         <Card title="Difusion (WebSocket)" value={status.difusion} />
         <Card title="Eventos (API REST)" value={status.eventos} />
         <Card title="Motor del mundo" value={agentes.length > 0 ? 'Tick activo' : 'Esperando datos'} />
-        <Card title="Decision de agentes" value="1 Pod activo" />
+        <Card title="Decision de agentes" value={`${replicasDecision} Pod(s) activo(s)`} />
       </div>
     </div>
   )

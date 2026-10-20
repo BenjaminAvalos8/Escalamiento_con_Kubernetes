@@ -1,23 +1,23 @@
 const { crearClienteRedis } = require("@anthill/redis-config");
 
-console.log("=========================================");
-console.log("🧠 INICIANDO SERVICIO DE DECISIÓN");
-console.log("=========================================");
-
 const redis = crearClienteRedis();
+const workerId = process.env.HOSTNAME || `worker-${Math.random().toString(36).substring(2, 9)}`;
 
 async function start() {
   try {
     await redis.connect();
-    console.log("✅ [Decisión] Conexión exitosa con la instancia de Redis.");
+    console.log(`[Decision] Conectado a Redis como worker ${workerId}`);
   } catch (err) {
-    console.error("⚠️ [Decisión] Esperando o reintentando conexión a Redis...", err.message);
+    console.error("[Decision] Error al conectar a Redis:", err.message);
   }
 
-  // Loop de procesamiento de decisiones
-  setInterval(() => {
-    // ponytail: ping simple de worker
-  }, 1000);
+  setInterval(async () => {
+    try {
+      await redis.set(`heartbeat:decision:${workerId}`, "1", "EX", 5);
+    } catch (err) {
+      // Manejo silencioso en reconexion
+    }
+  }, 2000);
 }
 
 start();

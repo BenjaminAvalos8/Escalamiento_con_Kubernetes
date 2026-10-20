@@ -1,18 +1,29 @@
 const express = require("express");
-
-console.log("=========================================");
-console.log("⚡ INICIANDO SERVICIO DE EVENTOS");
-console.log("=========================================");
+const { crearClienteRedis } = require("@anthill/redis-config");
 
 const app = express();
 app.use(express.json());
+
+const redis = crearClienteRedis();
+redis.connect().catch((err) => {
+  console.error("[Eventos] Error al conectar a Redis:", err.message);
+});
 
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
+app.get("/api/metricas/infraestructura", async (req, res) => {
+  try {
+    const keys = await redis.keys("heartbeat:decision:*");
+    res.json({ replicasDecision: Math.max(1, keys.length) });
+  } catch (err) {
+    res.json({ replicasDecision: 1 });
+  }
+});
+
 app.post("/api/eventos/sequia", (req, res) => {
-  console.log("[Eventos] Recibido evento de sequía");
+  console.log("[Eventos] Recibido evento de sequia");
   res.json({ status: "ok", evento: "sequia" });
 });
 
@@ -29,5 +40,5 @@ app.post("/api/admin/spawn", (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 [Eventos] Servidor API escuchando en el puerto ${PORT}`);
+  console.log(`[Eventos] Servidor API escuchando en el puerto ${PORT}`);
 });
