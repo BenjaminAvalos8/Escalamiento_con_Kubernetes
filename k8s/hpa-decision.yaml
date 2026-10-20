@@ -12,9 +12,29 @@ spec:
   minReplicas: 1
   maxReplicas: 10
   metrics:
+    - type: External
+      external:
+        metric:
+          name: anthill_agentes_activos
+        target:
+          type: AverageValue
+          averageValue: "50"
     - type: Resource
       resource:
         name: cpu
         target:
           type: Utilization
           averageUtilization: 70
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+    scaleDown:
+      stabilizationWindowSeconds: 15
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15

@@ -10,6 +10,8 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@anthill/redis-config": "^1.0.0",
+    "@anthill/shared-core": "^1.0.0",
     "socket.io": "^4.8.4"
   }
 }

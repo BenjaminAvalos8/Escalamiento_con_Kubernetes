@@ -1,9 +1,7 @@
 const http = require("http");
 const { Server } = require("socket.io");
-
-console.log("=========================================");
-console.log("📡 INICIANDO SERVICIO DE DIFUSIÓN EN VIVO");
-console.log("=========================================");
+const { crearClienteRedis } = require("@anthill/redis-config");
+const { CANALES_REDIS } = require("@anthill/shared-core");
 
 const server = http.createServer((req, res) => {
   if (req.url === "/health") {
@@ -19,13 +17,43 @@ const io = new Server(server, {
 });
 
 io.on("connection", (socket) => {
-  console.log(`[Difusión] Cliente conectado: ${socket.id}`);
+  console.log(`[Difusion] Cliente conectado: ${socket.id}`);
   socket.on("disconnect", () => {
-    console.log(`[Difusión] Cliente desconectado: ${socket.id}`);
+    console.log(`[Difusion] Cliente desconectado: ${socket.id}`);
   });
 });
 
-const PORT = process.env.PORT || 4000;
-server.listen(PORT, () => {
-  console.log(`🚀 [Difusión] Servidor WebSocket escuchando en el puerto ${PORT}`);
-});
+const redisSub = crearClienteRedis();
+
+async function start() {
+  try {
+    await redisSub.connect();
+    console.log("[Difusion] Conectado a Redis como suscriptor");
+
+    await redisSub.subscribe(CANALES_REDIS.MUNDO_ESTADO, (err) => {
+      if (err) {
+        console.error("[Difusion] Error al suscribirse al canal:", err.message);
+      }
+    });
+
+    redisSub.on("message", (channel, message) => {
+      if (channel === CANALES_REDIS.MUNDO_ESTADO) {
+        try {
+          const data = JSON.parse(message);
+          io.emit("mundo:estado", data);
+        } catch (e) {
+          console.error("[Difusion] Error al parsear mensaje de mundo:", e.message);
+        }
+      }
+    });
+  } catch (err) {
+    console.error("[Difusion] Error al conectar con Redis:", err.message);
+  }
+
+  const PORT = process.env.PORT || 4000;
+  server.listen(PORT, () => {
+    console.log(`[Difusion] Servidor escuchando en el puerto ${PORT}`);
+  });
+}
+
+start();
