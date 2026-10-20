@@ -29,8 +29,8 @@ async function start() {
 
     try {
         await redisSub.connect();
-        await redisSub.subscribe("canal:eventos:spawn", (err) => {
-            if (err) console.error("[Motor] Error al suscribirse a spawn:", err.message);
+        await redisSub.subscribe("canal:eventos:spawn", "canal:eventos:purge", (err) => {
+            if (err) console.error("[Motor] Error al suscribirse a eventos:", err.message);
         });
 
         redisSub.on("message", (channel, message) => {
@@ -50,10 +50,20 @@ async function start() {
                 } catch (e) {
                     console.error("[Motor] Error al parsear spawn:", e.message);
                 }
+            } else if (channel === "canal:eventos:purge") {
+                try {
+                    const { cantidad } = JSON.parse(message);
+                    const count = Math.max(1, Number(cantidad) || 0);
+                    agentes.splice(0, count);
+                    redis.set("simulacion:agentes_activos", agentes.length);
+                    console.log(`[Motor] Purga procesada: -${count} agentes. Total: ${agentes.length}`);
+                } catch (e) {
+                    console.error("[Motor] Error al parsear purge:", e.message);
+                }
             }
         });
     } catch (err) {
-        console.error("[Motor] Error al conectar suscriptor de spawn:", err.message);
+        console.error("[Motor] Error al conectar suscriptor de eventos:", err.message);
     }
 
     let tick = 0;

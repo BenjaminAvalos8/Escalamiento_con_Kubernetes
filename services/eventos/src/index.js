@@ -56,6 +56,15 @@ app.post("/api/admin/spawn", (req, res) => {
   res.json({ status: "ok", cantidad: count });
 });
 
+app.post("/api/admin/purge", (req, res) => {
+  const count = Math.max(1, Number(req.body?.cantidad) || 50);
+  redis.publish("canal:eventos:purge", JSON.stringify({ cantidad: count })).catch((err) => {
+    console.error("[Eventos] Error publicando purge a Redis:", err.message);
+  });
+  console.log(`[Eventos] Purga de agentes solicitada: ${count}`);
+  res.json({ status: "ok", cantidad: count });
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`[Eventos] Servidor API escuchando en el puerto ${PORT}`);

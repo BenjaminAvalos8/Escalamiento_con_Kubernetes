@@ -63,6 +63,22 @@ function App() {
     }
   }, [])
 
+  const inyectarCarga = (cantidad) => {
+    fetch('/api/admin/spawn', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cantidad }),
+    }).catch(() => {})
+  }
+
+  const purgarCarga = (cantidad) => {
+    fetch('/api/admin/purge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cantidad }),
+    }).catch(() => {})
+  }
+
   return (
     <div style={{ fontFamily: 'system-ui', padding: '2rem', maxWidth: 900, margin: '0 auto' }}>
       <ContadorAgentes agentes={agentes.length} />
@@ -74,6 +90,37 @@ function App() {
       </p>
 
       <MapaEcosistema agentes={agentes} />
+
+      <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem', justifyContent: 'center' }}>
+        <button
+          onClick={() => inyectarCarga(100)}
+          style={{
+            padding: '0.6rem 1.2rem',
+            background: '#059669',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 6,
+            cursor: 'pointer',
+            fontWeight: 600,
+          }}
+        >
+          Inyectar carga (+100 agentes)
+        </button>
+        <button
+          onClick={() => purgarCarga(100)}
+          style={{
+            padding: '0.6rem 1.2rem',
+            background: '#dc2626',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 6,
+            cursor: 'pointer',
+            fontWeight: 600,
+          }}
+        >
+          Purgar carga (-100 agentes)
+        </button>
+      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1.5rem' }}>
         <Card title="Difusion (WebSocket)" value={status.difusion} />
