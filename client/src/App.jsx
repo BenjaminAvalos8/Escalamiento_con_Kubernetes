@@ -1,121 +1,148 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
+import { useState, useEffect } from 'react'
+import { io } from 'socket.io-client'
 import './App.css'
+import ContadorAgentes from './components/ContadorAgentes.jsx'
+import MetricasInfraestructura from './components/MetricasInfraestructura.jsx'
+import MapaEcosistema from './components/MapaEcosistema.jsx'
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [status, setStatus] = useState({ difusion: 'Desconectado', eventos: 'Verificando...' })
+  const [agentes, setAgentes] = useState([])
+  const [tick, setTick] = useState(0)
+  const [replicasDecision, setReplicasDecision] = useState(1)
+
+  useEffect(() => {
+    fetch('/health-eventos')
+      .then(r => {
+        if (!r.ok) throw new Error()
+        return r.json()
+      })
+      .then(() => setStatus(s => ({ ...s, eventos: 'Online' })))
+      .catch(() => setStatus(s => ({ ...s, eventos: 'Offline' })))
+
+    const fetchMetricas = () => {
+      fetch('/api/metricas/infraestructura')
+        .then(r => {
+          if (!r.ok) throw new Error()
+          return r.json()
+        })
+        .then(d => {
+          if (typeof d?.replicasDecision === 'number') {
+            setReplicasDecision(d.replicasDecision)
+          }
+        })
+        .catch(() => {})
+    }
+
+    fetchMetricas()
+    const intervalMetricas = setInterval(fetchMetricas, 2000)
+
+    const socket = io({
+      path: '/socket.io',
+      transports: ['websocket', 'polling'],
+    })
+
+    socket.on('connect', () => {
+      setStatus(s => ({ ...s, difusion: 'Online' }))
+    })
+
+    socket.on('disconnect', () => {
+      setStatus(s => ({ ...s, difusion: 'Offline' }))
+    })
+
+    socket.on('mundo:estado', (data) => {
+      if (Array.isArray(data?.agentes)) {
+        setAgentes(data.agentes)
+        setTick(data.tick || 0)
+      }
+    })
+
+    return () => {
+      clearInterval(intervalMetricas)
+      socket.disconnect()
+    }
+  }, [])
+
+  const inyectarCarga = (cantidad) => {
+    fetch('/api/admin/spawn', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cantidad }),
+    }).catch(() => {})
+  }
+
+  const purgarCarga = (cantidad) => {
+    fetch('/api/admin/purge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cantidad }),
+    }).catch(() => {})
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
+    <div style={{ fontFamily: 'system-ui', padding: '2rem', maxWidth: 900, margin: '0 auto' }}>
+      <ContadorAgentes agentes={agentes.length} />
+      <MetricasInfraestructura replicasDecision={replicasDecision} />
+
+      <h1>AntHill – Dashboard</h1>
+      <p style={{ color: '#888' }}>
+        Panel de control de la simulacion | Tick actual: {tick}
+      </p>
+
+      <MapaEcosistema agentes={agentes} />
+
+      <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem', justifyContent: 'center' }}>
         <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
+          onClick={() => inyectarCarga(100)}
+          style={{
+            padding: '0.6rem 1.2rem',
+            background: '#059669',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 6,
+            cursor: 'pointer',
+            fontWeight: 600,
+          }}
         >
-          Count is {count}
+          Inyectar carga (+100 agentes)
         </button>
-      </section>
+        <button
+          onClick={() => purgarCarga(100)}
+          style={{
+            padding: '0.6rem 1.2rem',
+            background: '#dc2626',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 6,
+            cursor: 'pointer',
+            fontWeight: 600,
+          }}
+        >
+          Purgar carga (-100 agentes)
+        </button>
+      </div>
 
-      <div className="ticks"></div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1.5rem' }}>
+        <Card title="Difusion (WebSocket)" value={status.difusion} />
+        <Card title="Eventos (API REST)" value={status.eventos} />
+        <Card title="Motor del mundo" value={agentes.length > 0 ? 'Tick activo' : 'Esperando datos'} />
+        <Card title="Decision de agentes" value={`${replicasDecision} Pod(s) activo(s)`} />
+      </div>
+    </div>
+  )
+}
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+function Card({ title, value }) {
+  return (
+    <div style={{
+      padding: '1.2rem',
+      background: '#16213e',
+      borderRadius: 8,
+      border: '1px solid #0f3460',
+    }}>
+      <h4 style={{ margin: 0, color: '#e94560' }}>{title}</h4>
+      <p style={{ margin: '0.4rem 0 0', fontSize: '1rem' }}>{value}</p>
+    </div>
   )
 }
 

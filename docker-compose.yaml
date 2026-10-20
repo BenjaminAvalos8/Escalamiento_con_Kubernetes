@@ -1,0 +1,79 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    networks:
+      default:
+        aliases:
+          - redis-service
+
+  motor:
+    build:
+      context: .
+      dockerfile: services/motor/Dockerfile
+    container_name: motor
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - redis
+
+  decision:
+    build:
+      context: .
+      dockerfile: services/decision/Dockerfile
+    container_name: decision
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - redis
+
+  difusion:
+    build:
+      context: .
+      dockerfile: services/difusion/Dockerfile
+    container_name: difusion
+    ports:
+      - "4000:4000"
+    environment:
+      - PORT=4000
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - redis
+    networks:
+      default:
+        aliases:
+          - difusion-service
+
+  eventos:
+    build:
+      context: .
+      dockerfile: services/eventos/Dockerfile
+    container_name: eventos
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - redis
+    networks:
+      default:
+        aliases:
+          - eventos-service
+
+  client:
+    build:
+      context: .
+      dockerfile: client/Dockerfile
+    container_name: client
+    ports:
+      - "8080:80"
+    depends_on:
+      - difusion
+      - eventos
