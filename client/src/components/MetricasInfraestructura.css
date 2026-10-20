@@ -1,30 +1,22 @@
-.hud-infraestructura {
-  position: fixed;
-  top: 16px;
-  right: 16px;
-  z-index: 10;
-  min-width: 200px;
-  padding: 12px 14px;
-  border-radius: 8px;
-  border: 1px solid #334155;
-  background: rgba(15, 23, 42, 0.8);
-  color: #e2e8f0;
-  font-size: 14px;
-}
-.hud-titulo {
+.hud-infra-embedded {
   margin-bottom: 8px;
-  color: #94a3b8;
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(51, 65, 85, 0.5);
 }
-.hud-fila {
+
+.hud-infra-fila {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
   align-items: center;
+  font-size: 12px;
+  color: #94a3b8;
 }
+
 .metrica-decision {
   color: #38bdf8;
-  font-size: 16px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-weight: 700;
+  font-size: 14px;
 }

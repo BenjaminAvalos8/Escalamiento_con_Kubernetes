@@ -7,13 +7,15 @@ if (!Number.isInteger(N) || N < 0) {
     process.exit(1);
 }
 
-const ANCHO = 100, ALTO = 100;
+const ANCHO = 1000, ALTO = 1000;
+const CENTRO_X = 500, CENTRO_Y = 500;
+
 const agentes = Array.from({ length: N }, (_, id) => ({
     id,
-    x: Math.floor(Math.random() * ANCHO),
-    y: Math.floor(Math.random() * ALTO),
+    x: Math.max(0, Math.min(ANCHO - 1, CENTRO_X + Math.floor(Math.random() * 60) - 30)),
+    y: Math.max(0, Math.min(ALTO - 1, CENTRO_Y + Math.floor(Math.random() * 60) - 30)),
 }));
-console.log(`[Motor] Mundo creado con ${agentes.length} agentes`);
+console.log(`[Motor] Mundo 1000x1000 creado con ${agentes.length} agentes`);
 
 const redis = crearClienteRedis();
 const redisSub = crearClienteRedis();
@@ -41,8 +43,8 @@ async function start() {
                     for (let i = 0; i < count; i++) {
                         agentes.push({
                             id: agentes.length,
-                            x: Math.floor(Math.random() * ANCHO),
-                            y: Math.floor(Math.random() * ALTO),
+                            x: Math.max(0, Math.min(ANCHO - 1, CENTRO_X + Math.floor(Math.random() * 40) - 20)),
+                            y: Math.max(0, Math.min(ALTO - 1, CENTRO_Y + Math.floor(Math.random() * 40) - 20)),
                         });
                     }
                     redis.set("simulacion:agentes_activos", agentes.length);
