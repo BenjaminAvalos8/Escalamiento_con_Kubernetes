@@ -18,6 +18,7 @@ const io = new Server(server, {
 
 const redis = crearClienteRedis();
 const redisSub = crearClienteRedis();
+const workerId = process.env.HOSTNAME || `difusion-${Math.random().toString(36).substring(2, 9)}`;
 
 function actualizarEspectadores() {
   const count = io.engine ? io.engine.clientsCount : 0;
@@ -39,7 +40,15 @@ async function start() {
     await redis.connect().catch(() => {});
     await redis.set("simulacion:espectadores_activos", 0).catch(() => {});
     await redisSub.connect();
-    console.log("[Difusion] Conectado a Redis como suscriptor");
+    console.log(`[Difusion] Conectado a Redis como worker ${workerId}`);
+
+    setInterval(async () => {
+      try {
+        await redis.set(`heartbeat:difusion:${workerId}`, "1", "EX", 5);
+      } catch (err) {
+        // Manejo silencioso en reconexion
+      }
+    }, 2000);
 
     await redisSub.subscribe(CANALES_REDIS.MUNDO_ESTADO, (err) => {
       if (err) {

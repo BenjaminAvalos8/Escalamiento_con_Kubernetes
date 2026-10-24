@@ -35,10 +35,14 @@ app.get("/metrics", async (req, res) => {
 
 app.get("/api/metricas/infraestructura", async (req, res) => {
   try {
-    const keys = await redis.keys("heartbeat:decision:*");
-    res.json({ replicasDecision: Math.max(1, keys.length) });
+    const keysDecision = await redis.keys("heartbeat:decision:*");
+    const keysDifusion = await redis.keys("heartbeat:difusion:*");
+    res.json({
+      replicasDecision: Math.max(1, keysDecision.length),
+      replicasDifusion: Math.max(1, keysDifusion.length),
+    });
   } catch (err) {
-    res.json({ replicasDecision: 1 });
+    res.json({ replicasDecision: 1, replicasDifusion: 1 });
   }
 });
 

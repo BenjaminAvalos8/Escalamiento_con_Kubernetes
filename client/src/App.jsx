@@ -10,6 +10,7 @@ function App() {
   const [agentes, setAgentes] = useState([])
   const [tick, setTick] = useState(0)
   const [replicasDecision, setReplicasDecision] = useState(1)
+  const [replicasDifusion, setReplicasDifusion] = useState(1)
   const [camInfo, setCamInfo] = useState({ cellX: 500, cellY: 500, zoom: '0.50' })
 
   useEffect(() => {
@@ -30,6 +31,9 @@ function App() {
         .then(d => {
           if (typeof d?.replicasDecision === 'number') {
             setReplicasDecision(d.replicasDecision)
+          }
+          if (typeof d?.replicasDifusion === 'number') {
+            setReplicasDifusion(d.replicasDifusion)
           }
         })
         .catch(() => {})
@@ -127,7 +131,7 @@ function App() {
               <span className="hud-badge">Namespace: default</span>
             </div>
 
-            <MetricasInfraestructura replicasDecision={replicasDecision} />
+            <MetricasInfraestructura replicasDecision={replicasDecision} replicasDifusion={replicasDifusion} />
 
             <div className="hud-row">
               <span>Motor del mundo:</span>
