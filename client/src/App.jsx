@@ -10,6 +10,8 @@ function App() {
   const [agentes, setAgentes] = useState([])
   const [tick, setTick] = useState(0)
   const [replicasDecision, setReplicasDecision] = useState(1)
+  const [replicasDifusion, setReplicasDifusion] = useState(1)
+  const [camInfo, setCamInfo] = useState({ cellX: 500, cellY: 500, zoom: '0.50' })
 
   useEffect(() => {
     fetch('/health-eventos')
@@ -29,6 +31,9 @@ function App() {
         .then(d => {
           if (typeof d?.replicasDecision === 'number') {
             setReplicasDecision(d.replicasDecision)
+          }
+          if (typeof d?.replicasDifusion === 'number') {
+            setReplicasDifusion(d.replicasDifusion)
           }
         })
         .catch(() => {})
@@ -80,68 +85,90 @@ function App() {
   }
 
   return (
-    <div style={{ fontFamily: 'system-ui', padding: '2rem', maxWidth: 900, margin: '0 auto' }}>
-      <ContadorAgentes agentes={agentes.length} />
-      <MetricasInfraestructura replicasDecision={replicasDecision} />
+    <div className="app-viewport">
+      {/* Canvas del mundo 1000x1000 interactivo (fullscreen) */}
+      <MapaEcosistema
+        agentes={agentes}
+        ancho={1000}
+        alto={1000}
+        onCameraChange={setCamInfo}
+      />
 
-      <h1>AntHill – Dashboard</h1>
-      <p style={{ color: '#888' }}>
-        Panel de control de la simulacion | Tick actual: {tick}
-      </p>
+      {/* Capa de interfaces flotantes (HUD) */}
+      <div className="hud-container">
+        {/* HUD Superior Izquierdo: Estado del Sistema */}
+        <div className="hud-top-left hud-interactive">
+          <div className="hud-card">
+            <div className="hud-header">
+              <span className="hud-title">Estado del Sistema</span>
+              <span className={`hud-badge ${status.difusion === 'Online' ? '' : 'offline'}`}>
+                {status.difusion === 'Online' ? 'EN VIVO' : 'OFFLINE'}
+              </span>
+            </div>
 
-      <MapaEcosistema agentes={agentes} />
+            <ContadorAgentes agentes={agentes.length} />
 
-      <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem', justifyContent: 'center' }}>
-        <button
-          onClick={() => inyectarCarga(100)}
-          style={{
-            padding: '0.6rem 1.2rem',
-            background: '#059669',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 6,
-            cursor: 'pointer',
-            fontWeight: 600,
-          }}
-        >
-          Inyectar carga (+100 agentes)
-        </button>
-        <button
-          onClick={() => purgarCarga(100)}
-          style={{
-            padding: '0.6rem 1.2rem',
-            background: '#dc2626',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 6,
-            cursor: 'pointer',
-            fontWeight: 600,
-          }}
-        >
-          Purgar carga (-100 agentes)
-        </button>
+            <div className="hud-row">
+              <span>Cadencia (Tick):</span>
+              <span className="val">{tick}</span>
+            </div>
+            <div className="hud-row">
+              <span>Camara central:</span>
+              <span className="val">[{camInfo.cellX}, {camInfo.cellY}]</span>
+            </div>
+            <div className="hud-row">
+              <span>Escala (Zoom):</span>
+              <span className="val">{camInfo.zoom}x</span>
+            </div>
+          </div>
+        </div>
+
+        {/* HUD Superior Derecho: Orquestacion Kubernetes */}
+        <div className="hud-top-right hud-interactive">
+          <div className="hud-card">
+            <div className="hud-header">
+              <span className="hud-title">Kubernetes (HPA)</span>
+              <span className="hud-badge">Namespace: default</span>
+            </div>
+
+            <MetricasInfraestructura replicasDecision={replicasDecision} replicasDifusion={replicasDifusion} />
+
+            <div className="hud-row">
+              <span>Motor del mundo:</span>
+              <span className="val">1 replica (fija)</span>
+            </div>
+            <div className="hud-row">
+              <span>Difusion (WS):</span>
+              <span className="val">{status.difusion}</span>
+            </div>
+            <div className="hud-row">
+              <span>Eventos (REST):</span>
+              <span className="val">{status.eventos}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Panel Inferior Central: Controles de Carga */}
+        <div className="hud-bottom-center hud-interactive">
+          <div className="hud-card action-bar">
+            <button
+              onClick={() => inyectarCarga(100)}
+              className="btn-action btn-spawn"
+            >
+              Inyectar carga (+100 agentes)
+            </button>
+            <button
+              onClick={() => purgarCarga(100)}
+              className="btn-action btn-purge"
+            >
+              Purgar carga (-100 agentes)
+            </button>
+          </div>
+          <div className="hud-tip">
+            Arrastra con el mouse para mover la camara | Rueda del mouse para zoom
+          </div>
+        </div>
       </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1.5rem' }}>
-        <Card title="Difusion (WebSocket)" value={status.difusion} />
-        <Card title="Eventos (API REST)" value={status.eventos} />
-        <Card title="Motor del mundo" value={agentes.length > 0 ? 'Tick activo' : 'Esperando datos'} />
-        <Card title="Decision de agentes" value={`${replicasDecision} Pod(s) activo(s)`} />
-      </div>
-    </div>
-  )
-}
-
-function Card({ title, value }) {
-  return (
-    <div style={{
-      padding: '1.2rem',
-      background: '#16213e',
-      borderRadius: 8,
-      border: '1px solid #0f3460',
-    }}>
-      <h4 style={{ margin: 0, color: '#e94560' }}>{title}</h4>
-      <p style={{ margin: '0.4rem 0 0', fontSize: '1rem' }}>{value}</p>
     </div>
   )
 }
