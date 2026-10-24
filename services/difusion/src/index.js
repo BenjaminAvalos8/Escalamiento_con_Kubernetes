@@ -16,17 +16,28 @@ const io = new Server(server, {
   cors: { origin: "*" },
 });
 
+const redis = crearClienteRedis();
+const redisSub = crearClienteRedis();
+
+function actualizarEspectadores() {
+  const count = io.engine ? io.engine.clientsCount : 0;
+  redis.set("simulacion:espectadores_activos", count).catch(() => {});
+}
+
 io.on("connection", (socket) => {
   console.log(`[Difusion] Cliente conectado: ${socket.id}`);
+  actualizarEspectadores();
+
   socket.on("disconnect", () => {
     console.log(`[Difusion] Cliente desconectado: ${socket.id}`);
+    actualizarEspectadores();
   });
 });
 
-const redisSub = crearClienteRedis();
-
 async function start() {
   try {
+    await redis.connect().catch(() => {});
+    await redis.set("simulacion:espectadores_activos", 0).catch(() => {});
     await redisSub.connect();
     console.log("[Difusion] Conectado a Redis como suscriptor");
 

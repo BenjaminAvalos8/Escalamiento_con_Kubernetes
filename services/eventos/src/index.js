@@ -17,11 +17,16 @@ app.get("/metrics", async (req, res) => {
   try {
     const val = await redis.get("simulacion:agentes_activos");
     const total = parseInt(val, 10) || 0;
+    const valEsp = await redis.get("simulacion:espectadores_activos");
+    const totalEsp = parseInt(valEsp, 10) || 0;
     res.setHeader("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
     res.send(
       "# HELP anthill_agentes_activos Cantidad de agentes simulados activos\n" +
       "# TYPE anthill_agentes_activos gauge\n" +
-      `anthill_agentes_activos ${total}\n`
+      `anthill_agentes_activos ${total}\n` +
+      "# HELP anthill_espectadores_activos Cantidad de espectadores websocket conectados\n" +
+      "# TYPE anthill_espectadores_activos gauge\n" +
+      `anthill_espectadores_activos ${totalEsp}\n`
     );
   } catch (err) {
     res.status(500).send("# ERROR\n");
