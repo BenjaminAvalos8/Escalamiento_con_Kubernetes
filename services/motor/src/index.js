@@ -70,6 +70,7 @@ async function start() {
 
     let tick = 0;
     setInterval(() => {
+        const tInicio = performance.now();
         tick++;
         for (const a of agentes) {
             const dx = Math.floor(Math.random() * 3) - 1;
@@ -78,7 +79,8 @@ async function start() {
             a.y = Math.max(0, Math.min(ALTO - 1, a.y + dy));
         }
 
-        const payload = JSON.stringify({ tick, agentes });
+        const duracionTickMs = Math.round(performance.now() - tInicio);
+        const payload = JSON.stringify({ tick, agentes, duracionTickMs });
         redis.publish(CANALES_REDIS.MUNDO_ESTADO, payload).catch((err) => {
             console.error("[Motor] Error al publicar tick:", err.message);
         });
