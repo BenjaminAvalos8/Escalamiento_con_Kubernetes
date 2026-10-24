@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { io } from 'socket.io-client'
 import './App.css'
 import ContadorAgentes from './components/ContadorAgentes.jsx'
@@ -12,6 +12,12 @@ function App() {
   const [replicasDecision, setReplicasDecision] = useState(1)
   const [replicasDifusion, setReplicasDifusion] = useState(1)
   const [camInfo, setCamInfo] = useState({ cellX: 500, cellY: 500, zoom: '0.50' })
+  const [tps, setTps] = useState(0)
+  const [segundosTranscurridos, setSegundosTranscurridos] = useState(0)
+  const [duracionTickMs, setDuracionTickMs] = useState(0)
+  const [saturado, setSaturado] = useState(false)
+  const [modoTestSaturado, setModoTestSaturado] = useState(false)
+  const ticksRecibidosRef = useRef(0)
 
   useEffect(() => {
     fetch('/health-eventos')
@@ -42,6 +48,12 @@ function App() {
     fetchMetricas()
     const intervalMetricas = setInterval(fetchMetricas, 2000)
 
+    const timerInterval = setInterval(() => {
+      setSegundosTranscurridos(s => s + 1)
+      setTps(ticksRecibidosRef.current)
+      ticksRecibidosRef.current = 0
+    }, 1000)
+
     const socket = io({
       path: '/socket.io',
       transports: ['websocket', 'polling'],
@@ -56,14 +68,24 @@ function App() {
     })
 
     socket.on('mundo:estado', (data) => {
+      ticksRecibidosRef.current += 1
       if (Array.isArray(data?.agentes)) {
         setAgentes(data.agentes)
         setTick(data.tick || 0)
+      }
+      if (typeof data?.duracionTickMs === 'number') {
+        setDuracionTickMs(data.duracionTickMs)
+        if (data.duracionTickMs > 150) {
+          setSaturado(true)
+        } else if (data.duracionTickMs < 100) {
+          setSaturado(false)
+        }
       }
     })
 
     return () => {
       clearInterval(intervalMetricas)
+      clearInterval(timerInterval)
       socket.disconnect()
     }
   }, [])
@@ -84,8 +106,21 @@ function App() {
     }).catch(() => {})
   }
 
+  const estaSaturado = saturado || modoTestSaturado
+
   return (
     <div className="app-viewport">
+      {/* Banner de alerta reactiva de saturacion (HU12) */}
+      {estaSaturado && (
+        <div className="alerta-saturacion-banner" role="alert">
+          <span className="alerta-icono">!</span>
+          <div className="alerta-texto">
+            <strong>ALERTA: SISTEMA SATURADO</strong>
+            <span>Tiempo de cálculo del tick: {modoTestSaturado ? 185 : duracionTickMs} ms (&gt; 150 ms). Estrangulamiento detectado.</span>
+          </div>
+        </div>
+      )}
+
       {/* Canvas del mundo 1000x1000 interactivo (fullscreen) */}
       <MapaEcosistema
         agentes={agentes}
@@ -109,8 +144,31 @@ function App() {
             <ContadorAgentes agentes={agentes.length} />
 
             <div className="hud-row">
-              <span>Cadencia (Tick):</span>
+              <span>Tiempo de corrida:</span>
+              <span className="val">{(() => {
+                const min = String(Math.floor(segundosTranscurridos / 60)).padStart(2, '0');
+                const seg = String(segundosTranscurridos % 60).padStart(2, '0');
+                const hrs = Math.floor(segundosTranscurridos / 3600);
+                return hrs > 0 ? `${hrs}:${min}:${seg}` : `00:${min}:${seg}`;
+              })()}</span>
+            </div>
+            <div className="hud-row">
+              <span>Cadencia real (TPS):</span>
+              <span className="val">{tps.toFixed(1)} tps</span>
+            </div>
+            <div className="hud-row">
+              <span>Tick del motor:</span>
               <span className="val">{tick}</span>
+            </div>
+            <div
+              className="hud-row cursor-clickable"
+              onClick={() => setModoTestSaturado(s => !s)}
+              title="Haz clic para probar la alerta de saturación (HU12)"
+            >
+              <span>Latencia cálculo tick:</span>
+              <span className={`val ${estaSaturado ? 'texto-alerta' : ''}`}>
+                {modoTestSaturado ? 185 : duracionTickMs} ms
+              </span>
             </div>
             <div className="hud-row">
               <span>Camara central:</span>
