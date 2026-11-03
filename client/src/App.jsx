@@ -5,9 +5,16 @@ import ContadorAgentes from './components/ContadorAgentes.jsx'
 import MetricasInfraestructura from './components/MetricasInfraestructura.jsx'
 import MapaEcosistema from './components/MapaEcosistema.jsx'
 
+const crearAgentesMock = (n = 100) =>
+  Array.from({ length: n }, (_, id) => ({
+    id,
+    x: Math.max(0, Math.min(999, 500 + Math.floor(Math.random() * 60) - 30)),
+    y: Math.max(0, Math.min(999, 500 + Math.floor(Math.random() * 60) - 30)),
+  }))
+
 function App() {
   const [status, setStatus] = useState({ difusion: 'Desconectado', eventos: 'Verificando...' })
-  const [agentes, setAgentes] = useState([])
+  const [agentes, setAgentes] = useState(() => crearAgentesMock(100))
   const [tick, setTick] = useState(0)
   const [replicasDecision, setReplicasDecision] = useState(1)
   const [replicasDifusion, setReplicasDifusion] = useState(1)
@@ -91,12 +98,39 @@ function App() {
     }
   }, [])
 
+  // Movimiento local autonomo cuando el backend difusion no esta conectado
+  useEffect(() => {
+    if (status.difusion === 'Online') return
+    const interval = setInterval(() => {
+      setTick(t => t + 1)
+      setAgentes(prev =>
+        prev.map(a => ({
+          ...a,
+          x: Math.max(0, Math.min(999, a.x + Math.floor(Math.random() * 3) - 1)),
+          y: Math.max(0, Math.min(999, a.y + Math.floor(Math.random() * 3) - 1)),
+        }))
+      )
+    }, 500)
+    return () => clearInterval(interval)
+  }, [status.difusion])
+
   const inyectarCarga = (cantidad) => {
     fetch('/api/admin/spawn', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ cantidad }),
     }).catch(() => {})
+
+    if (status.difusion !== 'Online') {
+      setAgentes(prev => [
+        ...prev,
+        ...Array.from({ length: cantidad }, (_, i) => ({
+          id: prev.length + i,
+          x: Math.max(0, Math.min(999, 500 + Math.floor(Math.random() * 60) - 30)),
+          y: Math.max(0, Math.min(999, 500 + Math.floor(Math.random() * 60) - 30)),
+        }))
+      ])
+    }
   }
 
   const purgarCarga = (cantidad) => {
@@ -105,6 +139,10 @@ function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ cantidad }),
     }).catch(() => {})
+
+    if (status.difusion !== 'Online') {
+      setAgentes(prev => prev.slice(0, Math.max(0, prev.length - cantidad)))
+    }
   }
 
   const estaSaturado = saturado || modoTestSaturado
