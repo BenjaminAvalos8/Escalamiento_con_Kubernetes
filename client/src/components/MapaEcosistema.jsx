@@ -5,6 +5,7 @@ export default function MapaEcosistema({
   agentes = [],
   ancho = 1000,
   alto = 1000,
+  umbralAgregado = 300,
   onCameraChange,
 }) {
   const canvasRef = useRef(null)
@@ -16,6 +17,17 @@ export default function MapaEcosistema({
   const dragStartRef = useRef({ x: 0, y: 0 })
   const hasCenteredRef = useRef(false)
 
+  // Umbral y lista de agentes en ref para bucle de renderizado a 60fps
+  const umbralRef = useRef(umbralAgregado)
+  useEffect(() => {
+    umbralRef.current = umbralAgregado
+  }, [umbralAgregado])
+
+  const agentesListRef = useRef(agentes)
+  useEffect(() => {
+    agentesListRef.current = agentes
+  }, [agentes])
+
   // Estado minimo para re-render de UI
   const [renderTrigger, setRenderTrigger] = useState(0)
   const [isDraggingState, setIsDraggingState] = useState(false)
@@ -25,6 +37,9 @@ export default function MapaEcosistema({
 
   // Sincronizar objetivos de animacion cuando llegan nuevos datos del servidor
   useEffect(() => {
+    // Si estamos en modo agregado, no saturar memoria animando miles de lerps
+    if (agentes.length > umbralRef.current) return
+
     const currentMap = animAgentesRef.current
     const activeIds = new Set()
 
@@ -178,10 +193,16 @@ export default function MapaEcosistema({
       const camera = cameraRef.current
       const cellSize = BASE_CELL * zoom
 
-      // 1. Interpolacion suave de posiciones (Lerp)
-      for (const p of animAgentesRef.current.values()) {
-        p.x += (p.targetX - p.x) * 0.18
-        p.y += (p.targetY - p.y) * 0.18
+      // HU13: Alternar entre modo detallado (sprites) y agregado (mapa de calor) segun umbral
+      const totalAgentes = agentesListRef.current.length
+      const esModoAgregado = totalAgentes > umbralRef.current
+
+      // 1. Interpolacion suave de posiciones (Lerp) solo en modo detallado para optimizar rendimiento
+      if (!esModoAgregado) {
+        for (const p of animAgentesRef.current.values()) {
+          p.x += (p.targetX - p.x) * 0.18
+          p.y += (p.targetY - p.y) * 0.18
+        }
       }
 
       // 2. Fondo del viewport
@@ -240,43 +261,96 @@ export default function MapaEcosistema({
       ctx.lineWidth = 2
       ctx.strokeRect(worldScreenX, worldScreenY, worldScreenW, worldScreenH)
 
-      // 3. Dibujar hormigas e identificar casillas compartidas
-      ctx.fillStyle = '#e94560'
-      const antRadius = Math.max(2, cellSize * 0.4)
-      const cellCounts = cellSize >= 14 ? new Map() : null
+      // 3. Renderizado de entidades: Agregado vs Detallado (HU13)
+      if (esModoAgregado) {
+        // Modo Agregado: Oculta elementos separados y pinta bloques solidos (mapa de calor) sobre la grilla
+        const densidadPorCelda = new Map()
+        const rawAgentes = agentesListRef.current
 
-      for (const p of animAgentesRef.current.values()) {
-        const px = camera.x + p.x * cellSize + cellSize / 2
-        const py = camera.y + p.y * cellSize + cellSize / 2
+        for (let i = 0; i < rawAgentes.length; i++) {
+          const a = rawAgentes[i]
+          const cx = Math.round(a.x)
+          const cy = Math.round(a.y)
 
-        if (px >= -antRadius && px <= cw + antRadius && py >= -antRadius && py <= ch + antRadius) {
-          ctx.beginPath()
-          ctx.arc(px, py, antRadius, 0, Math.PI * 2)
-          ctx.fill()
-
-          if (cellCounts) {
-            const cx = Math.round(p.targetX)
-            const cy = Math.round(p.targetY)
+          if (cx >= startCol && cx <= endCol && cy >= startRow && cy <= endRow) {
             const key = `${cx},${cy}`
-            cellCounts.set(key, (cellCounts.get(key) || 0) + 1)
+            densidadPorCelda.set(key, (densidadPorCelda.get(key) || 0) + 1)
           }
         }
-      }
 
-      // 4. Indicador numerico en esquina inferior derecha para casillas con multiples hormigas
-      if (cellCounts && cellSize >= 14) {
-        const fontSize = Math.min(10, Math.max(8, Math.floor(cellSize * 0.35)))
-        ctx.font = `bold ${fontSize}px ui-monospace, Consolas, monospace`
-        ctx.fillStyle = '#38bdf8'
-        ctx.textAlign = 'right'
-        ctx.textBaseline = 'bottom'
+        // Pintar bloques solidos sobre la grilla con escala de color termica
+        for (const [key, count] of densidadPorCelda.entries()) {
+          const [cx, cy] = key.split(',').map(Number)
+          const screenX = camera.x + cx * cellSize
+          const screenY = camera.y + cy * cellSize
 
-        for (const [key, count] of cellCounts.entries()) {
-          if (count > 1) {
-            const [cx, cy] = key.split(',').map(Number)
-            const textX = camera.x + (cx + 1) * cellSize - 2
-            const textY = camera.y + (cy + 1) * cellSize - 1
-            ctx.fillText(count, textX, textY)
+          // Escala de densidad: Amarillo -> Naranja -> Rojo -> Magenta
+          if (count >= 10) {
+            ctx.fillStyle = 'rgba(217, 70, 239, 0.90)'
+          } else if (count >= 5) {
+            ctx.fillStyle = 'rgba(239, 68, 68, 0.85)'
+          } else if (count >= 2) {
+            ctx.fillStyle = 'rgba(249, 115, 22, 0.80)'
+          } else {
+            ctx.fillStyle = 'rgba(234, 179, 8, 0.75)'
+          }
+
+          ctx.fillRect(screenX, screenY, cellSize, cellSize)
+
+          if (cellSize >= 12) {
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)'
+            ctx.lineWidth = 1
+            ctx.strokeRect(screenX, screenY, cellSize, cellSize)
+
+            if (cellSize >= 16) {
+              const fontSize = Math.min(11, Math.max(8, Math.floor(cellSize * 0.4)))
+              ctx.font = `bold ${fontSize}px ui-monospace, Consolas, monospace`
+              ctx.fillStyle = '#ffffff'
+              ctx.textAlign = 'center'
+              ctx.textBaseline = 'middle'
+              ctx.fillText(count, screenX + cellSize / 2, screenY + cellSize / 2)
+            }
+          }
+        }
+      } else {
+        // Modo Detallado: Dibuja elementos (sprites/circulos) separados con coordenadas discretas
+        ctx.fillStyle = '#e94560'
+        const antRadius = Math.max(2, cellSize * 0.4)
+        const cellCounts = cellSize >= 14 ? new Map() : null
+
+        for (const p of animAgentesRef.current.values()) {
+          const px = camera.x + p.x * cellSize + cellSize / 2
+          const py = camera.y + p.y * cellSize + cellSize / 2
+
+          if (px >= -antRadius && px <= cw + antRadius && py >= -antRadius && py <= ch + antRadius) {
+            ctx.beginPath()
+            ctx.arc(px, py, antRadius, 0, Math.PI * 2)
+            ctx.fill()
+
+            if (cellCounts) {
+              const cx = Math.round(p.targetX)
+              const cy = Math.round(p.targetY)
+              const key = `${cx},${cy}`
+              cellCounts.set(key, (cellCounts.get(key) || 0) + 1)
+            }
+          }
+        }
+
+        // 4. Indicador numerico en esquina inferior derecha para casillas con multiples hormigas
+        if (cellCounts && cellSize >= 14) {
+          const fontSize = Math.min(10, Math.max(8, Math.floor(cellSize * 0.35)))
+          ctx.font = `bold ${fontSize}px ui-monospace, Consolas, monospace`
+          ctx.fillStyle = '#38bdf8'
+          ctx.textAlign = 'right'
+          ctx.textBaseline = 'bottom'
+
+          for (const [key, count] of cellCounts.entries()) {
+            if (count > 1) {
+              const [cx, cy] = key.split(',').map(Number)
+              const textX = camera.x + (cx + 1) * cellSize - 2
+              const textY = camera.y + (cy + 1) * cellSize - 1
+              ctx.fillText(count, textX, textY)
+            }
           }
         }
       }
