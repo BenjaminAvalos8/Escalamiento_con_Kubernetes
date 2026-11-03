@@ -17,6 +17,7 @@ function App() {
   const [duracionTickMs, setDuracionTickMs] = useState(0)
   const [saturado, setSaturado] = useState(false)
   const [modoTestSaturado, setModoTestSaturado] = useState(false)
+  const [umbralAgregado, setUmbralAgregado] = useState(300)
   const ticksRecibidosRef = useRef(0)
 
   useEffect(() => {
@@ -126,6 +127,7 @@ function App() {
         agentes={agentes}
         ancho={1000}
         alto={1000}
+        umbralAgregado={umbralAgregado}
         onCameraChange={setCamInfo}
       />
 
@@ -142,6 +144,21 @@ function App() {
             </div>
 
             <ContadorAgentes agentes={agentes.length} />
+
+            <div className="hud-row">
+              <span>Modo del mapa:</span>
+              <span className={`val ${agentes.length > umbralAgregado ? 'texto-alerta' : ''}`}>
+                {agentes.length > umbralAgregado ? 'Agregado (Calor)' : 'Detallado (Sprites)'}
+              </span>
+            </div>
+            <div
+              className="hud-row cursor-clickable"
+              onClick={() => setUmbralAgregado(u => (u === 300 ? 150 : u === 150 ? 50 : 300))}
+              title="Haz clic para alternar el umbral (50, 150 o 300 agentes) para probar el cambio de modo (HU13)"
+            >
+              <span>Umbral agregación (HU13):</span>
+              <span className="val">{umbralAgregado}</span>
+            </div>
 
             <div className="hud-row">
               <span>Tiempo de corrida:</span>
