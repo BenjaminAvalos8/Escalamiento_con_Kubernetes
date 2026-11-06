@@ -4,6 +4,7 @@ import './MapaEcosistema.css'
 export default function MapaEcosistema({
   agentes = [],
   recursos = [],
+  depredadores = [],
   eventosActivos = [],
   ancho = 1000,
   alto = 1000,
@@ -34,6 +35,11 @@ export default function MapaEcosistema({
   useEffect(() => {
     recursosListRef.current = recursos
   }, [recursos])
+
+  const depredadoresListRef = useRef(depredadores)
+  useEffect(() => {
+    depredadoresListRef.current = depredadores
+  }, [depredadores])
 
   const eventosListRef = useRef(eventosActivos)
   useEffect(() => {
@@ -293,13 +299,13 @@ export default function MapaEcosistema({
       }
 
       // HU15: Renderizado de Recursos (Alimento)
-      const recursos = recursosListRef.current || []
-      if (recursos.length > 0) {
+      const recursosActuales = recursosListRef.current || []
+      if (recursosActuales.length > 0) {
         const recRadius = Math.max(2, cellSize * 0.38)
-        ctx.fillStyle = '#10b981' // Verde esmeralda brillante
+        ctx.fillStyle = '#10b981'
 
-        for (let i = 0; i < recursos.length; i++) {
-          const r = recursos[i]
+        for (let i = 0; i < recursosActuales.length; i++) {
+          const r = recursosActuales[i]
           if (r.x >= startCol && r.x <= endCol && r.y >= startRow && r.y <= endRow) {
             const rx = camera.x + r.x * cellSize + cellSize / 2
             const ry = camera.y + r.y * cellSize + cellSize / 2
@@ -310,9 +316,45 @@ export default function MapaEcosistema({
         }
       }
 
+      // HU16: Renderizado de Depredadores (entidades de amenaza temporal)
+      const deps = depredadoresListRef.current || []
+      if (deps.length > 0) {
+        for (let i = 0; i < deps.length; i++) {
+          const dep = deps[i]
+          const dx = camera.x + dep.x * cellSize + cellSize / 2
+          const dy = camera.y + dep.y * cellSize + cellSize / 2
+
+          // Radio de amenaza visual (halo pulsante rojo/violeta)
+          const amenazaRadiusPx = (dep.radioAmenaza || 80) * cellSize
+          ctx.beginPath()
+          ctx.arc(dx, dy, amenazaRadiusPx, 0, Math.PI * 2)
+          ctx.fillStyle = 'rgba(168, 85, 247, 0.08)'
+          ctx.fill()
+          ctx.strokeStyle = 'rgba(168, 85, 247, 0.4)'
+          ctx.lineWidth = 1.5
+          ctx.setLineDash([6, 4])
+          ctx.stroke()
+          ctx.setLineDash([])
+
+          // Cuerpo del depredador: rombo (diamante) diferenciado
+          const depSize = Math.max(6, cellSize * 1.2)
+          ctx.save()
+          ctx.translate(dx, dy)
+          ctx.rotate(Math.PI / 4)
+          ctx.fillStyle = '#a855f7'
+          ctx.shadowColor = '#a855f7'
+          ctx.shadowBlur = 10
+          ctx.fillRect(-depSize / 2, -depSize / 2, depSize, depSize)
+          ctx.strokeStyle = '#e879f9'
+          ctx.lineWidth = 1.5
+          ctx.strokeRect(-depSize / 2, -depSize / 2, depSize, depSize)
+          ctx.restore()
+          ctx.shadowBlur = 0
+        }
+      }
+
       // 3. Renderizado de entidades: Agregado vs Detallado (HU13)
       if (esModoAgregado) {
-        // Modo Agregado: Oculta elementos separados y pinta bloques solidos (mapa de calor) sobre la grilla
         const densidadPorCelda = new Map()
         const rawAgentes = agentesListRef.current
 
@@ -327,7 +369,6 @@ export default function MapaEcosistema({
           }
         }
 
-        // Pintar bloques solidos sobre la grilla con escala de color termica
         for (const [key, count] of densidadPorCelda.entries()) {
           const [cx, cy] = key.split(',').map(Number)
           const screenX = camera.x + cx * cellSize
@@ -361,7 +402,7 @@ export default function MapaEcosistema({
           }
         }
       } else {
-        // Modo Detallado: Dibuja elementos (sprites/circulos) separados con coordenadas discretas
+        // Modo Detallado: Dibuja elementos (sprites/circulos) separados
         ctx.fillStyle = '#e94560'
         const antRadius = Math.max(2, cellSize * 0.4)
         const cellCounts = cellSize >= 14 ? new Map() : null

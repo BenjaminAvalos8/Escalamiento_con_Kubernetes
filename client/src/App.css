@@ -154,6 +154,15 @@
   background: #b45309;
 }
 
+/* HU16: Estilos de boton de Depredador */
+.btn-depredador {
+  background: #7c3aed;
+}
+
+.btn-depredador:hover:not(:disabled) {
+  background: #6d28d9;
+}
+
 .btn-disabled,
 .btn-action:disabled {
   background: #475569 !important;

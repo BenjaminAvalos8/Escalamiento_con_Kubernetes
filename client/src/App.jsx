@@ -39,6 +39,7 @@ function App() {
   const [status, setStatus] = useState({ difusion: 'Desconectado', eventos: 'Verificando...' })
   const [agentes, setAgentes] = useState(() => crearAgentesMock(100))
   const [recursos, setRecursos] = useState(() => crearRecursosMock(200))
+  const [depredadores, setDepredadores] = useState([])
   const [eventosActivos, setEventosActivos] = useState([])
   const [tick, setTick] = useState(0)
   const [replicasDecision, setReplicasDecision] = useState(1)
@@ -51,20 +52,22 @@ function App() {
   const [modoTestSaturado, setModoTestSaturado] = useState(false)
   const [umbralAgregado, setUmbralAgregado] = useState(300)
 
-  // HU15: Estado para control de Cooldown del evento Sequia
+  // HU15: Cooldown Sequia | HU16: Cooldown Depredador
   const [cooldownSequia, setCooldownSequia] = useState(0)
+  const [cooldownDepredador, setCooldownDepredador] = useState(0)
   const [feedbackEvento, setFeedbackEvento] = useState('')
 
   const ticksRecibidosRef = useRef(0)
 
-  // Reloj de cuenta regresiva para el cooldown de eventos
+  // Reloj de cuenta regresiva para cooldowns
   useEffect(() => {
-    if (cooldownSequia <= 0) return
+    if (cooldownSequia <= 0 && cooldownDepredador <= 0) return
     const timer = setInterval(() => {
       setCooldownSequia(c => Math.max(0, c - 1))
+      setCooldownDepredador(c => Math.max(0, c - 1))
     }, 1000)
     return () => clearInterval(timer)
-  }, [cooldownSequia])
+  }, [cooldownSequia, cooldownDepredador])
 
   useEffect(() => {
     fetch('/health-eventos')
@@ -123,6 +126,9 @@ function App() {
       if (Array.isArray(data?.recursos)) {
         setRecursos(data.recursos)
       }
+      if (Array.isArray(data?.depredadores)) {
+        setDepredadores(data.depredadores)
+      }
       if (Array.isArray(data?.eventosActivos)) {
         setEventosActivos(data.eventosActivos)
       }
@@ -154,6 +160,17 @@ function App() {
           x: Math.max(0, Math.min(999, a.x + Math.floor(Math.random() * 3) - 1)),
           y: Math.max(0, Math.min(999, a.y + Math.floor(Math.random() * 3) - 1)),
         }))
+      )
+      // HU16: Mover depredadores localmente y decrementar su vida
+      setDepredadores(prev =>
+        prev
+          .map(dep => ({
+            ...dep,
+            x: Math.max(0, Math.min(999, dep.x + Math.floor(Math.random() * 7) - 3)),
+            y: Math.max(0, Math.min(999, dep.y + Math.floor(Math.random() * 7) - 3)),
+            ticksRestantes: dep.ticksRestantes - 1,
+          }))
+          .filter(dep => dep.ticksRestantes > 0)
       )
     }, 500)
     return () => clearInterval(interval)
@@ -205,12 +222,12 @@ function App() {
       })
       .then(d => {
         setCooldownSequia(d.cooldownSegundos || 10)
-        setFeedbackEvento('Evento Sequía aplicado: recursos eliminados en la zona central')
+        setFeedbackEvento('🌵 Evento Sequía aplicado: recursos eliminados en la zona central')
         setTimeout(() => setFeedbackEvento(''), 4000)
       })
       .catch(() => {
         setCooldownSequia(10)
-        setFeedbackEvento('Evento Sequía aplicado en modo local')
+        setFeedbackEvento('🌵 Evento Sequía aplicado en modo local')
         setTimeout(() => setFeedbackEvento(''), 4000)
       })
 
@@ -223,8 +240,54 @@ function App() {
           return dSq > 150 ** 2
         })
       )
-      setEventosActivos([{ tipo: 'sequia', x: 500, y: 500, radio: 150, ticksRestantes: 20 }])
-      setFeedbackEvento('Evento Sequía aplicado en modo local: recursos eliminados en el centro')
+      setEventosActivos(prev => [...prev, { tipo: 'sequia', x: 500, y: 500, radio: 150, ticksRestantes: 20 }])
+      setFeedbackEvento('🌵 Evento Sequía aplicado en modo local: recursos eliminados en el centro')
+      setTimeout(() => setFeedbackEvento(''), 4000)
+    }
+  }
+
+  // HU16: Funcion para disparar evento Depredador con Cooldown
+  const dispararDepredador = () => {
+    if (cooldownDepredador > 0) return
+
+    fetch('/api/eventos/depredador', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cantidad: 3, zona: { x: 500, y: 500, radio: 200 } }),
+    })
+      .then(r => {
+        if (!r.ok) throw new Error()
+        return r.json()
+      })
+      .then(d => {
+        setCooldownDepredador(d.cooldownSegundos || 12)
+        setFeedbackEvento('🐍 Depredadores invocados: las hormigas cercanas huyen')
+        setTimeout(() => setFeedbackEvento(''), 4000)
+      })
+      .catch(() => {
+        setCooldownDepredador(12)
+        setFeedbackEvento('🐍 Depredadores invocados en modo local')
+        setTimeout(() => setFeedbackEvento(''), 4000)
+      })
+
+    // Modo autonomo/local para visualizacion inmediata
+    if (status.difusion !== 'Online') {
+      setCooldownDepredador(12)
+      const nuevosDeps = []
+      for (let i = 0; i < 3; i++) {
+        const angulo = Math.random() * Math.PI * 2
+        const dist = Math.random() * 120
+        nuevosDeps.push({
+          id: `dep-local-${Date.now()}-${i}`,
+          x: Math.max(0, Math.min(999, Math.round(500 + Math.cos(angulo) * dist))),
+          y: Math.max(0, Math.min(999, Math.round(500 + Math.sin(angulo) * dist))),
+          ticksRestantes: 25,
+          radioAmenaza: 80,
+        })
+      }
+      setDepredadores(prev => [...prev, ...nuevosDeps])
+      setEventosActivos(prev => [...prev, { tipo: 'depredador', x: 500, y: 500, radio: 200, ticksRestantes: 25 }])
+      setFeedbackEvento('🐍 Depredadores invocados en modo local: las hormigas huyen')
       setTimeout(() => setFeedbackEvento(''), 4000)
     }
   }
@@ -244,10 +307,10 @@ function App() {
         </div>
       )}
 
-      {/* Toast de notificacion de evento (HU15) */}
+      {/* Toast de notificacion de evento (HU15/HU16) */}
       {feedbackEvento && (
         <div className="alerta-evento-toast" role="status">
-          <span>🌵 {feedbackEvento}</span>
+          <span>{feedbackEvento}</span>
         </div>
       )}
 
@@ -255,6 +318,7 @@ function App() {
       <MapaEcosistema
         agentes={agentes}
         recursos={recursos}
+        depredadores={depredadores}
         eventosActivos={eventosActivos}
         ancho={1000}
         alto={1000}
@@ -280,6 +344,12 @@ function App() {
               <span>Recursos visibles:</span>
               <span className="val" style={{ color: '#34d399', fontWeight: 'bold' }}>
                 {recursos.length}
+              </span>
+            </div>
+            <div className="hud-row">
+              <span>Depredadores activos:</span>
+              <span className="val" style={{ color: '#a855f7', fontWeight: 'bold' }}>
+                {depredadores.length}
               </span>
             </div>
 
@@ -387,6 +457,16 @@ function App() {
               title="HU15: Provoca una sequía eliminando recursos de una zona designada. Cooldown: 10s"
             >
               {cooldownSequia > 0 ? `🌵 Sequía (${cooldownSequia}s)` : '🌵 Provocar Sequía'}
+            </button>
+
+            {/* HU16: Boton interactivo de Depredador con Cooldown */}
+            <button
+              onClick={dispararDepredador}
+              disabled={cooldownDepredador > 0}
+              className={`btn-action btn-depredador ${cooldownDepredador > 0 ? 'btn-disabled' : ''}`}
+              title="HU16: Invoca depredadores temporales que hacen huir a las hormigas cercanas. Cooldown: 12s"
+            >
+              {cooldownDepredador > 0 ? `🐍 Depredador (${cooldownDepredador}s)` : '🐍 Invocar Depredador'}
             </button>
           </div>
           <div className="hud-tip">

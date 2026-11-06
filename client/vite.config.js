@@ -8,6 +8,13 @@ export default defineConfig({
       '/socket.io': {
         target: 'http://localhost:4000',
         ws: true,
+        configure: (proxy) => {
+          proxy.on('error', (err) => {
+            // Ignorar desconexiones normales del cliente al refrescar la página
+            if (['ECONNABORTED', 'ECONNRESET', 'EPIPE'].includes(err.code)) return
+            console.error('[proxy ws error]', err.message)
+          })
+        },
       },
       '/health-difusion': {
         target: 'http://localhost:4000',
