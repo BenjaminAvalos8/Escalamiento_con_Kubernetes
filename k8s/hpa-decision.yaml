@@ -18,13 +18,7 @@ spec:
           name: anthill_agentes_activos
         target:
           type: AverageValue
-          averageValue: "50"
-    - type: Resource
-      resource:
-        name: cpu
-        target:
-          type: Utilization
-          averageUtilization: 70
+          averageValue: "500"
   behavior:
     scaleUp:
       stabilizationWindowSeconds: 0

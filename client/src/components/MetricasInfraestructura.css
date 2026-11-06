@@ -2,8 +2,8 @@
   margin-bottom: 8px;
   padding: 8px 10px;
   border-radius: 8px;
-  background: rgba(15, 23, 42, 0.6);
-  border: 1px solid rgba(51, 65, 85, 0.5);
+  background: rgba(20, 21, 25, 0.6);
+  border: 1px solid rgba(199, 228, 232, 0.2);
 }
 
 .hud-infra-fila {
@@ -11,11 +11,18 @@
   justify-content: space-between;
   align-items: center;
   font-size: 12px;
-  color: #94a3b8;
+  color: #939FA1;
 }
 
 .metrica-decision {
-  color: #38bdf8;
+  color: #C7E4E8;
+  font-family: ui-monospace, Consolas, monospace;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.metrica-difusion {
+  color: #c084fc;
   font-family: ui-monospace, Consolas, monospace;
   font-weight: 700;
   font-size: 14px;

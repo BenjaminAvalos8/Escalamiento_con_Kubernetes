@@ -1,10 +1,19 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import './MapaEcosistema.css'
 
+// Mismo nido que el motor
+const NIDO = { x: 500, y: 500, radio: 20 }
+// Tamano de celda (px) desde el que se ven los numeros de hormigas por casilla
+const CELDA_MIN_NUMERO = 9
+
 export default function MapaEcosistema({
   agentes = [],
+  recursos = [],
+  depredadores = [],
+  eventosActivos = [],
   ancho = 1000,
   alto = 1000,
+  modoCalor = false,
   onCameraChange,
 }) {
   const canvasRef = useRef(null)
@@ -16,8 +25,34 @@ export default function MapaEcosistema({
   const dragStartRef = useRef({ x: 0, y: 0 })
   const hasCenteredRef = useRef(false)
 
+  // Umbral y listas en refs para bucle de renderizado a 60fps
+  const modoCalorRef = useRef(modoCalor)
+  useEffect(() => {
+    modoCalorRef.current = modoCalor
+  }, [modoCalor])
+
+  const agentesListRef = useRef(agentes)
+  useEffect(() => {
+    agentesListRef.current = agentes
+  }, [agentes])
+
+  const recursosListRef = useRef(recursos)
+  useEffect(() => {
+    recursosListRef.current = recursos
+  }, [recursos])
+
+  const depredadoresListRef = useRef(depredadores)
+  useEffect(() => {
+    depredadoresListRef.current = depredadores
+  }, [depredadores])
+
+  const eventosListRef = useRef(eventosActivos)
+  useEffect(() => {
+    eventosListRef.current = eventosActivos
+  }, [eventosActivos])
+
   // Estado minimo para re-render de UI
-  const [renderTrigger, setRenderTrigger] = useState(0)
+  const [, setRenderTrigger] = useState(0)
   const [isDraggingState, setIsDraggingState] = useState(false)
   const animAgentesRef = useRef(new Map())
 
@@ -25,6 +60,11 @@ export default function MapaEcosistema({
 
   // Sincronizar objetivos de animacion cuando llegan nuevos datos del servidor
   useEffect(() => {
+    if (modoCalorRef.current) {
+      animAgentesRef.current.clear()
+      return
+    }
+
     const currentMap = animAgentesRef.current
     const activeIds = new Set()
 
@@ -40,7 +80,6 @@ export default function MapaEcosistema({
       }
     }
 
-    // Limpiar agentes que hayan sido purgados
     if (currentMap.size > agentes.length) {
       for (const id of currentMap.keys()) {
         if (!activeIds.has(id)) {
@@ -97,13 +136,12 @@ export default function MapaEcosistema({
     }
   }, [onCameraChange, ancho, alto])
 
-  // Manejo de Zoom no pasivo (bloquea el zoom del navegador en la pagina)
+  // Manejo de Zoom no pasivo
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
 
     const handleWheelNative = (e) => {
-      // Detener cualquier zoom o scroll del navegador web
       e.preventDefault()
       e.stopPropagation()
 
@@ -116,7 +154,6 @@ export default function MapaEcosistema({
       const currentCam = cameraRef.current
       const currentZoom = zoomRef.current
 
-      // Zoom centrado en el punto del cursor
       const newCamX = mouseX - (mouseX - currentCam.x) * (newZoom / currentZoom)
       const newCamY = mouseY - (mouseY - currentCam.y) * (newZoom / currentZoom)
 
@@ -127,7 +164,6 @@ export default function MapaEcosistema({
       setRenderTrigger(n => n + 1)
     }
 
-    // passive: false es esencial para que preventDefault funcione contra el navegador
     canvas.addEventListener('wheel', handleWheelNative, { passive: false })
     return () => canvas.removeEventListener('wheel', handleWheelNative)
   }, [notifyHUD])
@@ -160,11 +196,11 @@ export default function MapaEcosistema({
       setIsDraggingState(false)
       try {
         e.target.releasePointerCapture(e.pointerId)
-      } catch (_) {}
+      } catch { /* ya estaba liberado */ }
     }
   }
 
-  // Bucle de animacion continuo a 60fps (Interpolacion suave y renderizado)
+  // Bucle de animacion continuo a 60fps
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -178,14 +214,19 @@ export default function MapaEcosistema({
       const camera = cameraRef.current
       const cellSize = BASE_CELL * zoom
 
+      const esModoAgregado = modoCalorRef.current
+      const conNumero = cellSize >= CELDA_MIN_NUMERO
+
       // 1. Interpolacion suave de posiciones (Lerp)
-      for (const p of animAgentesRef.current.values()) {
-        p.x += (p.targetX - p.x) * 0.18
-        p.y += (p.targetY - p.y) * 0.18
+      if (!esModoAgregado) {
+        for (const p of animAgentesRef.current.values()) {
+          p.x += (p.targetX - p.x) * 0.18
+          p.y += (p.targetY - p.y) * 0.18
+        }
       }
 
       // 2. Fondo del viewport
-      ctx.fillStyle = '#0b0f19'
+      ctx.fillStyle = '#0f1013'
       ctx.fillRect(0, 0, cw, ch)
 
       // Culling: rangos de celdas visibles en pantalla
@@ -200,25 +241,28 @@ export default function MapaEcosistema({
       const worldScreenW = ancho * cellSize
       const worldScreenH = alto * cellSize
 
-      ctx.fillStyle = '#0f172a'
+      ctx.fillStyle = '#141519'
       ctx.fillRect(worldScreenX, worldScreenY, worldScreenW, worldScreenH)
 
-      // Nido central (coordenadas 500, 500)
-      const nestRadius = 25 * cellSize
-      const nestScreenX = camera.x + 500 * cellSize
-      const nestScreenY = camera.y + 500 * cellSize
+      // Pinta un cuadrado de `radio` celdas alrededor de (x, y)
+      const cuadrado = (x, y, radio, relleno, borde, punteado = []) => {
+        const px = camera.x + (x - radio) * cellSize
+        const py = camera.y + (y - radio) * cellSize
+        const lado = (2 * radio + 1) * cellSize
+        ctx.fillStyle = relleno
+        ctx.fillRect(px, py, lado, lado)
+        ctx.strokeStyle = borde
+        ctx.lineWidth = 1.5
+        ctx.setLineDash(punteado)
+        ctx.strokeRect(px, py, lado, lado)
+        ctx.setLineDash([])
+      }
 
-      ctx.beginPath()
-      ctx.arc(nestScreenX, nestScreenY, nestRadius, 0, Math.PI * 2)
-      ctx.fillStyle = 'rgba(30, 41, 59, 0.7)'
-      ctx.fill()
-      ctx.strokeStyle = '#0284c7'
-      ctx.lineWidth = 1.5
-      ctx.stroke()
+      cuadrado(NIDO.x, NIDO.y, NIDO.radio, 'rgba(35, 36, 40, 0.85)', '#C7E4E8')
 
-      // Cuadricula del tamano exacto de los puntos (cuando el zoom lo amerita)
+      // Cuadricula
       if (cellSize >= 6) {
-        ctx.strokeStyle = 'rgba(51, 65, 85, 0.35)'
+        ctx.strokeStyle = 'rgba(147, 159, 161, 0.12)'
         ctx.lineWidth = 0.75
         ctx.beginPath()
 
@@ -236,47 +280,126 @@ export default function MapaEcosistema({
       }
 
       // Borde delimitador del mundo
-      ctx.strokeStyle = '#38bdf8'
+      ctx.strokeStyle = '#C7E4E8'
       ctx.lineWidth = 2
       ctx.strokeRect(worldScreenX, worldScreenY, worldScreenW, worldScreenH)
 
-      // 3. Dibujar hormigas e identificar casillas compartidas
-      ctx.fillStyle = '#e94560'
-      const antRadius = Math.max(2, cellSize * 0.4)
-      const cellCounts = cellSize >= 14 ? new Map() : null
-
-      for (const p of animAgentesRef.current.values()) {
-        const px = camera.x + p.x * cellSize + cellSize / 2
-        const py = camera.y + p.y * cellSize + cellSize / 2
-
-        if (px >= -antRadius && px <= cw + antRadius && py >= -antRadius && py <= ch + antRadius) {
-          ctx.beginPath()
-          ctx.arc(px, py, antRadius, 0, Math.PI * 2)
-          ctx.fill()
-
-          if (cellCounts) {
-            const cx = Math.round(p.targetX)
-            const cy = Math.round(p.targetY)
-            const key = `${cx},${cy}`
-            cellCounts.set(key, (cellCounts.get(key) || 0) + 1)
-          }
+      // Zonas de eventos activas (HU15 y HU17)
+      for (const ev of eventosListRef.current || []) {
+        if (ev.tipo === 'sequia') {
+          cuadrado(ev.x, ev.y, ev.radio, 'rgba(212, 154, 85, 0.12)', 'rgba(212, 154, 85, 0.75)', [8, 5])
+        } else if (ev.tipo === 'abundancia') {
+          cuadrado(ev.x, ev.y, ev.radio, 'rgba(52, 211, 153, 0.08)', 'rgba(52, 211, 153, 0.7)', [6, 4])
         }
       }
 
-      // 4. Indicador numerico en esquina inferior derecha para casillas con multiples hormigas
-      if (cellCounts && cellSize >= 14) {
-        const fontSize = Math.min(10, Math.max(8, Math.floor(cellSize * 0.35)))
-        ctx.font = `bold ${fontSize}px ui-monospace, Consolas, monospace`
-        ctx.fillStyle = '#38bdf8'
-        ctx.textAlign = 'right'
-        ctx.textBaseline = 'bottom'
+      // Comida (HU17): un cuadrado por parche, con minimo visible al alejar el zoom
+      const ladoComida = Math.max(3, cellSize * 0.8)
+      ctx.fillStyle = '#34d399'
+      for (const r of recursosListRef.current || []) {
+        if (r.x >= startCol && r.x <= endCol && r.y >= startRow && r.y <= endRow) {
+          ctx.fillRect(
+            camera.x + (r.x + 0.5) * cellSize - ladoComida / 2,
+            camera.y + (r.y + 0.5) * cellSize - ladoComida / 2,
+            ladoComida,
+            ladoComida,
+          )
+        }
+      }
 
-        for (const [key, count] of cellCounts.entries()) {
-          if (count > 1) {
-            const [cx, cy] = key.split(',').map(Number)
-            const textX = camera.x + (cx + 1) * cellSize - 2
-            const textY = camera.y + (cy + 1) * cellSize - 1
-            ctx.fillText(count, textX, textY)
+      // Depredadores (HU16): zona de panico y cuerpo cuadrados
+      for (const dep of depredadoresListRef.current || []) {
+        cuadrado(dep.x, dep.y, dep.radioAmenaza, 'rgba(225, 29, 72, 0.12)', 'rgba(225, 29, 72, 0.55)', [4, 4])
+        const ladoDep = Math.max(7, cellSize * 1.2)
+        ctx.fillStyle = '#e11d48'
+        ctx.fillRect(
+          camera.x + (dep.x + 0.5) * cellSize - ladoDep / 2,
+          camera.y + (dep.y + 0.5) * cellSize - ladoDep / 2,
+          ladoDep,
+          ladoDep,
+        )
+      }
+
+      // 3. Renderizado de entidades: Agregado vs Detallado (HU13)
+      // El numero de hormigas por casilla va en la esquina inferior derecha
+      ctx.font = `bold ${Math.min(11, Math.max(7, Math.floor(cellSize * 0.6)))}px ui-monospace, Consolas, monospace`
+      ctx.textAlign = 'right'
+      ctx.textBaseline = 'bottom'
+
+      if (esModoAgregado) {
+        const densidadPorCelda = new Map()
+        const rawAgentes = agentesListRef.current
+
+        for (let i = 0; i < rawAgentes.length; i++) {
+          const a = rawAgentes[i]
+          const cx = Math.round(a.x)
+          const cy = Math.round(a.y)
+
+          if (cx >= startCol && cx <= endCol && cy >= startRow && cy <= endRow) {
+            const key = `${cx},${cy}`
+            densidadPorCelda.set(key, (densidadPorCelda.get(key) || 0) + 1)
+          }
+        }
+
+        for (const [key, count] of densidadPorCelda.entries()) {
+          const [cx, cy] = key.split(',').map(Number)
+          const screenX = camera.x + cx * cellSize
+          const screenY = camera.y + cy * cellSize
+
+          if (count >= 10) {
+            ctx.fillStyle = '#FFFFFF'
+          } else if (count >= 5) {
+            ctx.fillStyle = 'rgba(225, 238, 243, 0.9)'
+          } else if (count >= 2) {
+            ctx.fillStyle = 'rgba(199, 228, 232, 0.65)'
+          } else {
+            ctx.fillStyle = 'rgba(199, 228, 232, 0.35)'
+          }
+
+          ctx.fillRect(screenX, screenY, cellSize, cellSize)
+
+          if (conNumero) {
+            // Oscuro sobre los cuadros claros, claro sobre los tenues
+            ctx.fillStyle = count >= 2 ? '#0f1013' : '#FFFFFF'
+            ctx.fillText(count, screenX + cellSize - 1, screenY + cellSize)
+          }
+        }
+      } else {
+        ctx.fillStyle = '#E1EEF3'
+        const antRadius = Math.max(2, cellSize * 0.4)
+        const cellCounts = conNumero ? new Map() : null
+
+        ctx.beginPath()
+
+        for (const p of animAgentesRef.current.values()) {
+          const px = camera.x + p.x * cellSize + cellSize / 2
+          const py = camera.y + p.y * cellSize + cellSize / 2
+
+          if (px >= -antRadius && px <= cw + antRadius && py >= -antRadius && py <= ch + antRadius) {
+            ctx.moveTo(px + antRadius, py)
+            ctx.arc(px, py, antRadius, 0, Math.PI * 2)
+
+            if (cellCounts) {
+              const cx = Math.round(p.targetX)
+              const cy = Math.round(p.targetY)
+              const key = `${cx},${cy}`
+              cellCounts.set(key, (cellCounts.get(key) || 0) + 1)
+            }
+          }
+        }
+
+        ctx.fill()
+
+        if (cellCounts) {
+          ctx.fillStyle = '#C7E4E8'
+
+          for (const [key, count] of cellCounts.entries()) {
+            if (count > 1) {
+              const [cx, cy] = key.split(',').map(Number)
+              const textX = camera.x + (cx + 1) * cellSize - 2
+              const textY = camera.y + (cy + 1) * cellSize - 1
+              ctx.fillText(count, textX, textY)
+            }
           }
         }
       }

@@ -1,0 +1,214 @@
+# ==============================================================================
+# PROMETHEUS: guarda las metricas que expone el servicio de eventos en /metrics
+# ==============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 5s
+    scrape_configs:
+      - job_name: anthill
+        static_configs:
+          - targets: ["eventos-service:3000"]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  labels:
+    app: prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.53.0
+          ports:
+            - containerPort: 9090
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+spec:
+  selector:
+    app: prometheus
+  ports:
+    - port: 9090
+      targetPort: 9090
+---
+# ==============================================================================
+# PROMETHEUS ADAPTER: publica esas metricas en la API que consulta el HPA
+# ==============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: adapter-config
+data:
+  config.yaml: |
+    externalRules:
+      - seriesQuery: '{__name__=~"anthill_(agentes|espectadores)_activos"}'
+        resources:
+          namespaced: false
+        metricsQuery: 'max(<<.Series>>{<<.LabelMatchers>>})'
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus-adapter
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus-adapter
+  labels:
+    app: prometheus-adapter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus-adapter
+  template:
+    metadata:
+      labels:
+        app: prometheus-adapter
+    spec:
+      serviceAccountName: prometheus-adapter
+      containers:
+        - name: prometheus-adapter
+          image: registry.k8s.io/prometheus-adapter/prometheus-adapter:v0.12.0
+          args:
+            - --cert-dir=/var/run/serving-cert
+            - --config=/etc/adapter/config.yaml
+            - --prometheus-url=http://prometheus:9090/
+            - --metrics-relist-interval=15s
+            - --secure-port=6443
+          ports:
+            - containerPort: 6443
+          volumeMounts:
+            - name: config
+              mountPath: /etc/adapter
+            - name: serving-cert
+              mountPath: /var/run/serving-cert
+      volumes:
+        - name: config
+          configMap:
+            name: adapter-config
+        - name: serving-cert
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-adapter
+spec:
+  selector:
+    app: prometheus-adapter
+  ports:
+    - port: 443
+      targetPort: 6443
+---
+apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata:
+  name: v1beta1.external.metrics.k8s.io
+spec:
+  group: external.metrics.k8s.io
+  version: v1beta1
+  groupPriorityMinimum: 100
+  versionPriority: 100
+  insecureSkipTLSVerify: true # ponytail: certificado autofirmado, aceptable en cluster local
+  service:
+    name: prometheus-adapter
+    namespace: default
+---
+# ==============================================================================
+# PERMISOS: el adapter lee el cluster y el HPA lee las metricas externas
+# ==============================================================================
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus-adapter-lector
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "namespaces", "pods", "services"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus-adapter-lector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus-adapter-lector
+subjects:
+  - kind: ServiceAccount
+    name: prometheus-adapter
+    namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus-adapter-auth-delegator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: prometheus-adapter
+    namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: prometheus-adapter-auth-reader
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+  - kind: ServiceAccount
+    name: prometheus-adapter
+    namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: lector-metricas-externas
+rules:
+  - apiGroups: ["external.metrics.k8s.io"]
+    resources: ["*"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: hpa-lector-metricas-externas
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: lector-metricas-externas
+subjects:
+  - kind: ServiceAccount
+    name: horizontal-pod-autoscaler
+    namespace: kube-system

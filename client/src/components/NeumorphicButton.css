@@ -1,0 +1,193 @@
+/* Neumorphic Button with Palette: #E1EEF3, #232428, #939FA1, #C7E4E8, #FFFFFF */
+.neumorphic-button {
+  color: #FFFFFF;
+  padding: 0.65em 1.15em;
+  font-size: 13.5px;
+  font-weight: 700;
+  line-height: 1.25;
+  border-radius: 0.7em;
+  background: #232428;
+  border: 1px solid rgba(199, 228, 232, 0.25);
+  transition: all 0.25s ease;
+  box-shadow: 4px 4px 10px #111215, -3px -3px 8px rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  outline: none;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  min-width: 122px;
+  min-height: 48px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.neumorphic-button .btn-subtext {
+  font-size: 11px;
+  color: #E1EEF3;
+  opacity: 0.88;
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+.neumorphic-button:hover:not(:disabled) {
+  filter: brightness(1.15);
+  transform: translateY(-1px);
+  box-shadow: 5px 5px 12px #0c0d0f, -4px -4px 10px rgba(199, 228, 232, 0.12);
+}
+
+.neumorphic-button:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: inset 4px 4px 10px #111215, inset -2px -2px 6px rgba(255, 255, 255, 0.08);
+}
+
+/* Sunken / Inset state when button is in cooldown (cd) */
+.neumorphic-button.is-cooldown {
+  transform: translateY(1px) !important;
+  box-shadow: inset 4px 4px 10px #111215, inset -2px -2px 6px rgba(255, 255, 255, 0.05) !important;
+  cursor: not-allowed !important;
+  opacity: 0.95 !important;
+}
+
+.neumorphic-button.btn-disabled,
+.neumorphic-button:disabled:not(.is-cooldown) {
+  opacity: 0.45;
+  cursor: not-allowed !important;
+  transform: none !important;
+  box-shadow: 2px 2px 5px #111215;
+  filter: grayscale(0.45);
+}
+
+/* 47 Hydra-Fill — continuous smooth 60fps draining liquid */
+.btn-cd-wrapper {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.ld-fill {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  border: 2px solid #C7E4E8;
+  flex-shrink: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(14, 16, 20, 0.75);
+}
+
+.ld-fill-drain {
+  position: absolute;
+  left: -40%;
+  right: -40%;
+  bottom: -20%;
+  height: 140%;
+  animation-name: drain-down;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+  pointer-events: none;
+}
+
+@keyframes drain-down {
+  0% {
+    transform: translateY(12%);
+  }
+  100% {
+    transform: translateY(94%);
+  }
+}
+
+.ld-fill-wave {
+  width: 100%;
+  height: 100%;
+  border-radius: 44% 47% 0 0;
+  background: #C7E4E8;
+  animation: surface-wave 1.5s ease-in-out infinite alternate;
+}
+
+@keyframes surface-wave {
+  from {
+    transform: rotate(-5deg);
+  }
+  to {
+    transform: rotate(5deg);
+  }
+}
+
+.ld-fill-num {
+  position: relative;
+  z-index: 2;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 11.5px;
+  font-weight: 800;
+  color: #FFFFFF;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 3px #000;
+  line-height: 1;
+  pointer-events: none;
+}
+
+/* Palette-integrated button variants */
+.neumorphic-button.btn-spawn {
+  background: linear-gradient(145deg, #253945, #1d2c35);
+  border: 1px solid #C7E4E8;
+  box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.55), -2px -2px 8px rgba(199, 228, 232, 0.15);
+}
+.neumorphic-button.btn-spawn .btn-subtext {
+  color: #C7E4E8;
+}
+.neumorphic-button.btn-spawn:active:not(:disabled) {
+  box-shadow: inset 4px 4px 10px #131d23, inset -2px -2px 6px rgba(199, 228, 232, 0.2);
+}
+
+.neumorphic-button.btn-purge {
+  background: linear-gradient(145deg, #442226, #2d1619);
+  border: 1px solid #e06c75;
+  box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.55), -2px -2px 8px rgba(224, 108, 117, 0.15);
+}
+.neumorphic-button.btn-purge:active:not(:disabled) {
+  box-shadow: inset 4px 4px 10px #1c0d0f, inset -2px -2px 6px rgba(224, 108, 117, 0.2);
+}
+
+.neumorphic-button.btn-sequia {
+  background: linear-gradient(145deg, #44321d, #2c2013);
+  border: 1px solid #d49a55;
+  box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.55), -2px -2px 8px rgba(212, 154, 85, 0.15);
+}
+.neumorphic-button.btn-sequia .ld-fill {
+  border-color: #d49a55;
+}
+.neumorphic-button.btn-sequia .ld-fill-wave {
+  background: #d49a55;
+}
+
+.neumorphic-button.btn-depredador {
+  background: linear-gradient(145deg, #461f2b, #2d141c);
+  border: 1px solid #e11d48;
+  box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.55), -2px -2px 8px rgba(225, 29, 72, 0.15);
+}
+.neumorphic-button.btn-depredador .ld-fill {
+  border-color: #e11d48;
+}
+.neumorphic-button.btn-depredador .ld-fill-wave {
+  background: #e11d48;
+}
+
+.neumorphic-button.btn-abundancia {
+  background: linear-gradient(145deg, #1e3a30, #132720);
+  border: 1px solid #34d399;
+  box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.55), -2px -2px 8px rgba(52, 211, 153, 0.15);
+}
+.neumorphic-button.btn-abundancia .ld-fill {
+  border-color: #34d399;
+}
+.neumorphic-button.btn-abundancia .ld-fill-wave {
+  background: #34d399;
+}
