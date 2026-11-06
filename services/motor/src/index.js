@@ -1,5 +1,5 @@
 const { crearClienteRedis } = require("@anthill/redis-config");
-const { CANALES_REDIS, ESTADOS } = require("@anthill/shared-core");
+const { CANALES_REDIS, ESTADOS, RADIO_PANICO } = require("@anthill/shared-core");
 
 const N = Number(process.env.AGENTES_INICIALES ?? 100);
 if (!Number.isInteger(N) || N < 0) {
@@ -11,6 +11,9 @@ const ANCHO = 1000, ALTO = 1000;
 const CENTRO_X = 500, CENTRO_Y = 500;
 const NIDO = { x: CENTRO_X, y: CENTRO_Y, radio: 20 };
 const TICK_MS = 100;
+const MAX_DEPREDADORES = 4;
+const PARCHES_ABUNDANCIA = 120;
+const UNIDADES_POR_PARCHE = 5;
 const TAM_LOTE = 500;
 const ESPERA_LOTES_MS = 1000; // Si un worker muere, sus hormigas se quedan quietas ese tick
 const segundosATicks = (seg) => Math.ceil((seg * 1000) / TICK_MS);
@@ -27,31 +30,8 @@ const agentes = Array.from({ length: N }, (_, id) => ({
 let siguienteId = N;
 console.log(`[Motor] Mundo 1000x1000 creado con ${agentes.length} agentes`);
 
-// Generacion inicial de recursos (alimento / parches de comida)
-function generarRecursosIniciales(total = 250) {
-    const lista = [];
-    let idRec = 1;
-    const focos = [
-        { x: 500, y: 500, dispersion: 110, cant: Math.floor(total * 0.45) }, // Zona central
-        { x: 280, y: 280, dispersion: 70, cant: Math.floor(total * 0.15) },
-        { x: 720, y: 280, dispersion: 70, cant: Math.floor(total * 0.15) },
-        { x: 300, y: 720, dispersion: 70, cant: Math.floor(total * 0.12) },
-        { x: 720, y: 720, dispersion: 70, cant: Math.floor(total * 0.13) },
-    ];
-    for (const f of focos) {
-        for (let i = 0; i < f.cant; i++) {
-            lista.push({
-                id: idRec++,
-                x: Math.max(0, Math.min(ANCHO - 1, Math.round(f.x + (Math.random() * 2 - 1) * f.dispersion))),
-                y: Math.max(0, Math.min(ALTO - 1, Math.round(f.y + (Math.random() * 2 - 1) * f.dispersion))),
-                valor: 1,
-            });
-        }
-    }
-    return lista;
-}
-
-let recursos = generarRecursosIniciales(250);
+// Segun la matriz, la comida solo aparece con el evento de abundancia
+let recursos = [];
 let eventosActivos = [];
 let depredadores = []; // HU16: Depredadores temporales activos
 
@@ -107,76 +87,62 @@ async function start() {
                     console.error("[Motor] Error al parsear purge:", e.message);
                 }
             } else if (channel === canalSequia) {
-                // HU15: Manejo del evento de Sequia
+                // HU15: Sequia en zona aleatoria cerca de la colonia, para que afecte a la comida
                 try {
-                    const data = JSON.parse(message);
-                    const zx = data?.zona?.x ?? 500;
-                    const zy = data?.zona?.y ?? 500;
-                    const zRadio = data?.zona?.radio ?? 150;
-
+                    const { duracionSegundos } = JSON.parse(message);
+                    const zona = {
+                        x: CENTRO_X + Math.round((Math.random() * 2 - 1) * 150),
+                        y: CENTRO_Y + Math.round((Math.random() * 2 - 1) * 150),
+                        radio: 150,
+                    };
                     const antes = recursos.length;
-                    recursos = recursos.filter(r => {
-                        const dSq = (r.x - zx) ** 2 + (r.y - zy) ** 2;
-                        return dSq > zRadio ** 2;
-                    });
-                    const eliminados = antes - recursos.length;
-                    console.log(`[Motor] Sequia aplicada en (${zx}, ${zy}, r=${zRadio}): ${eliminados} recursos eliminados`);
-
-                    eventosActivos.push({ tipo: 'sequia', x: zx, y: zy, radio: zRadio, ticksRestantes: segundosATicks(data?.duracionSegundos ?? 10) });
+                    recursos = recursos.filter((r) => Math.hypot(r.x - zona.x, r.y - zona.y) > zona.radio);
+                    console.log(`[Motor] Sequia en (${zona.x}, ${zona.y}): ${antes - recursos.length} recursos eliminados`);
+                    eventosActivos.push({ tipo: 'sequia', ...zona, ticksRestantes: segundosATicks(duracionSegundos) });
                 } catch (e) {
                     console.error("[Motor] Error al procesar sequia:", e.message);
                 }
             } else if (channel === canalDepredador) {
-                // HU16: Manejo del evento de Depredador
+                // HU16: Un depredador cerca de la colonia; con 4 activos sale el mas antiguo
                 try {
-                    const data = JSON.parse(message);
-                    const cant = Math.max(1, Math.min(5, Number(data?.cantidad) || 3));
-                    const zx = data?.zona?.x ?? 500;
-                    const zy = data?.zona?.y ?? 500;
-                    const zRadio = data?.zona?.radio ?? 200;
-                    const duracion = segundosATicks(data?.duracionSegundos ?? 12);
-
-                    for (let i = 0; i < cant; i++) {
-                        const angulo = Math.random() * Math.PI * 2;
-                        const dist = Math.random() * zRadio * 0.6;
-                        depredadores.push({
-                            id: `dep-${Date.now()}-${i}`,
-                            x: Math.max(0, Math.min(ANCHO - 1, Math.round(zx + Math.cos(angulo) * dist))),
-                            y: Math.max(0, Math.min(ALTO - 1, Math.round(zy + Math.sin(angulo) * dist))),
-                            ticksRestantes: duracion,
-                            radioAmenaza: 80,
-                        });
+                    const { duracionSegundos } = JSON.parse(message);
+                    if (depredadores.length >= MAX_DEPREDADORES) {
+                        const viejo = depredadores.shift();
+                        eventosActivos = eventosActivos.filter((ev) => ev.id !== viejo.id);
                     }
-                    console.log(`[Motor] ${cant} depredadores generados en (${zx}, ${zy}). Total activos: ${depredadores.length}`);
-
-                    eventosActivos.push({ tipo: 'depredador', x: zx, y: zy, radio: zRadio, ticksRestantes: duracion });
+                    const angulo = Math.random() * Math.PI * 2;
+                    const dist = NIDO.radio + 20 + Math.random() * 60;
+                    const dep = {
+                        id: `dep-${Date.now()}`,
+                        x: Math.round(CENTRO_X + Math.cos(angulo) * dist),
+                        y: Math.round(CENTRO_Y + Math.sin(angulo) * dist),
+                        ticksRestantes: segundosATicks(duracionSegundos),
+                        radioAmenaza: RADIO_PANICO,
+                    };
+                    depredadores.push(dep);
+                    console.log(`[Motor] Depredador en (${dep.x}, ${dep.y}). Activos: ${depredadores.length}`);
+                    eventosActivos.push({ id: dep.id, tipo: 'depredador', x: dep.x, y: dep.y, radio: RADIO_PANICO, ticksRestantes: dep.ticksRestantes });
                 } catch (e) {
                     console.error("[Motor] Error al procesar depredador:", e.message);
                 }
             } else if (channel === canalAbundancia) {
-                // HU17: Manejo del evento de Abundancia de Recursos
+                // HU17: Parches cerca del centro; la FSM atrae a las hormigas que los ven
                 try {
-                    const data = JSON.parse(message);
-                    const cant = Math.max(20, Math.min(300, Number(data?.cantidad) || 120));
-                    const zx = data?.zona?.x ?? 500;
-                    const zy = data?.zona?.y ?? 500;
-                    const zRadio = data?.zona?.radio ?? 180;
-                    const duracion = segundosATicks(data?.duracionSegundos ?? 15);
-
+                    const { duracionSegundos } = JSON.parse(message);
+                    const zona = { x: CENTRO_X, y: CENTRO_Y, radio: 180 };
                     let nextId = recursos.reduce((max, r) => Math.max(max, r.id), 0) + 1;
-                    for (let i = 0; i < cant; i++) {
+                    for (let i = 0; i < PARCHES_ABUNDANCIA; i++) {
                         const ang = Math.random() * Math.PI * 2;
-                        const dist = Math.random() * zRadio;
+                        const dist = Math.random() * zona.radio;
                         recursos.push({
                             id: nextId++,
-                            x: Math.max(0, Math.min(ANCHO - 1, Math.round(zx + Math.cos(ang) * dist))),
-                            y: Math.max(0, Math.min(ALTO - 1, Math.round(zy + Math.sin(ang) * dist))),
-                            valor: 1,
+                            x: Math.round(zona.x + Math.cos(ang) * dist),
+                            y: Math.round(zona.y + Math.sin(ang) * dist),
+                            unidades: UNIDADES_POR_PARCHE,
                         });
                     }
-                    console.log(`[Motor] Abundancia aplicada: +${cant} recursos creados en (${zx}, ${zy}). Total recursos: ${recursos.length}`);
-
-                    eventosActivos.push({ tipo: 'abundancia', x: zx, y: zy, radio: zRadio, ticksRestantes: duracion });
+                    console.log(`[Motor] Abundancia: +${PARCHES_ABUNDANCIA} parches. Total: ${recursos.length}`);
+                    eventosActivos.push({ tipo: 'abundancia', ...zona, ticksRestantes: segundosATicks(duracionSegundos) });
                 } catch (e) {
                     console.error("[Motor] Error al procesar abundancia:", e.message);
                 }
@@ -231,7 +197,7 @@ async function start() {
             if (recoge !== undefined) {
                 const recurso = porId.get(recoge);
                 if (recurso) {
-                    if (--recurso.valor <= 0) porId.delete(recoge);
+                    if (--recurso.unidades <= 0) porId.delete(recoge);
                 } else {
                     // Otra hormiga se llevo la ultima unidad en este mismo tick
                     nuevo.c = false;
@@ -260,10 +226,13 @@ async function start() {
         if (depredadores.length > 0) {
             for (const dep of depredadores) {
                 dep.ticksRestantes -= 1;
-                const dx = Math.floor(Math.random() * 7) - 3;
-                const dy = Math.floor(Math.random() * 7) - 3;
-                dep.x = Math.max(0, Math.min(ANCHO - 1, dep.x + dx));
-                dep.y = Math.max(0, Math.min(ALTO - 1, dep.y + dy));
+                const x = Math.max(0, Math.min(ANCHO - 1, dep.x + Math.floor(Math.random() * 3) - 1));
+                const y = Math.max(0, Math.min(ALTO - 1, dep.y + Math.floor(Math.random() * 3) - 1));
+                // No puede entrar al nido: si el paso lo lleva adentro, se queda donde esta
+                if (Math.hypot(x - NIDO.x, y - NIDO.y) > NIDO.radio) {
+                    dep.x = x;
+                    dep.y = y;
+                }
             }
             depredadores = depredadores.filter(dep => dep.ticksRestantes > 0);
         }

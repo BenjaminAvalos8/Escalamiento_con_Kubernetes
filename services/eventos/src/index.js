@@ -45,67 +45,28 @@ app.get("/api/metricas/infraestructura", async (req, res) => {
   }
 });
 
-// HU15: Endpoint para disparar sequia
-app.post("/api/eventos/sequia", async (req, res) => {
-  const zona = req.body?.zona || { x: 500, y: 500, radio: 150 };
-  const payload = {
-    tipo: "sequia",
-    timestamp: Date.now(),
-    zona,
-    duracionSegundos: 10,
-  };
-  try {
-    const canal = CANALES_REDIS.EVENTO_SEQUIA || "canal:eventos:sequia";
-    await redis.publish(canal, JSON.stringify(payload));
-    console.log(`[Eventos] Evento de sequia publicado a Redis (${zona.x}, ${zona.y}, r=${zona.radio})`);
-    res.json({ status: "ok", evento: "sequia", zona, cooldownSegundos: 10 });
-  } catch (err) {
-    console.error("[Eventos] Error publicando sequia a Redis:", err.message);
-    res.status(500).json({ error: "Error al publicar evento sequia" });
-  }
-});
+// HU15, HU16, HU17: cooldown en Redis (SET NX) para que valga para todos los usuarios
+const EVENTOS = {
+  sequia: { canal: CANALES_REDIS.EVENTO_SEQUIA, cooldown: 10 },
+  depredador: { canal: CANALES_REDIS.EVENTO_DEPREDADOR, cooldown: 8 },
+  abundancia: { canal: CANALES_REDIS.EVENTO_ABUNDANCIA, cooldown: 6 },
+};
 
-// HU16: Endpoint para disparar la aparicion de depredadores
-app.post("/api/eventos/depredador", async (req, res) => {
-  const cantidad = Math.max(1, Math.min(5, Number(req.body?.cantidad) || 3));
-  const zona = req.body?.zona || { x: 500, y: 500, radio: 200 };
-  const payload = {
-    tipo: "depredador",
-    timestamp: Date.now(),
-    cantidad,
-    zona,
-    duracionSegundos: 12,
-  };
+app.post("/api/eventos/:tipo", async (req, res) => {
+  const { tipo } = req.params;
+  if (!Object.hasOwn(EVENTOS, tipo)) return res.status(404).json({ error: "Evento desconocido" });
+  const { canal, cooldown } = EVENTOS[tipo];
   try {
-    const canal = CANALES_REDIS.EVENTO_DEPREDADOR || "canal:eventos:depredador";
-    await redis.publish(canal, JSON.stringify(payload));
-    console.log(`[Eventos] Evento de depredador publicado: ${cantidad} depredadores en (${zona.x}, ${zona.y})`);
-    res.json({ status: "ok", evento: "depredador", cantidad, cooldownSegundos: 12 });
+    const clave = `cooldown:${tipo}`;
+    if (!(await redis.set(clave, "1", "EX", cooldown, "NX"))) {
+      return res.status(429).json({ error: "Evento en enfriamiento", cooldownSegundos: Math.max(1, await redis.ttl(clave)) });
+    }
+    await redis.publish(canal, JSON.stringify({ tipo, duracionSegundos: cooldown }));
+    console.log(`[Eventos] Evento ${tipo} publicado`);
+    res.json({ status: "ok", evento: tipo, cooldownSegundos: cooldown });
   } catch (err) {
-    console.error("[Eventos] Error publicando depredador a Redis:", err.message);
-    res.status(500).json({ error: "Error al publicar evento depredador" });
-  }
-});
-
-// HU17: Endpoint para disparar abundancia de recursos
-app.post("/api/eventos/abundancia", async (req, res) => {
-  const cantidad = Math.max(20, Math.min(300, Number(req.body?.cantidad) || 120));
-  const zona = req.body?.zona || { x: 500, y: 500, radio: 180 };
-  const payload = {
-    tipo: "abundancia",
-    timestamp: Date.now(),
-    cantidad,
-    zona,
-    duracionSegundos: 15,
-  };
-  try {
-    const canal = CANALES_REDIS.EVENTO_ABUNDANCIA || "canal:eventos:abundancia";
-    await redis.publish(canal, JSON.stringify(payload));
-    console.log(`[Eventos] Evento de abundancia publicado: +${cantidad} recursos en zona (${zona.x}, ${zona.y})`);
-    res.json({ status: "ok", evento: "abundancia", cantidad, zona, cooldownSegundos: 10 });
-  } catch (err) {
-    console.error("[Eventos] Error publicando abundancia a Redis:", err.message);
-    res.status(500).json({ error: "Error al publicar evento abundancia" });
+    console.error(`[Eventos] Error publicando ${tipo}:`, err.message);
+    res.status(500).json({ error: `Error al publicar evento ${tipo}` });
   }
 });
 

@@ -208,133 +208,26 @@ function App() {
     }
   }
 
-  // HU15: Funcion para disparar evento Sequia con Cooldown
-  const dispararSequia = () => {
-    if (cooldownSequia > 0) return
-
-    fetch('/api/eventos/sequia', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ zona: { x: 500, y: 500, radio: 150 } }),
-    })
-      .then(r => {
-        if (!r.ok) throw new Error()
-        return r.json()
-      })
-      .then(d => {
-        setCooldownSequia(d.cooldownSegundos || 10)
-        setFeedbackEvento('🌵 Evento Sequía aplicado: recursos eliminados en la zona central')
-        setTimeout(() => setFeedbackEvento(''), 4000)
-      })
-      .catch(() => {
-        setCooldownSequia(10)
-        setFeedbackEvento('🌵 Evento Sequía aplicado en modo local')
-        setTimeout(() => setFeedbackEvento(''), 4000)
-      })
-
-    if (status.difusion !== 'Online') {
-      setCooldownSequia(10)
-      setRecursos(prev =>
-        prev.filter(r => {
-          const dSq = (r.x - 500) ** 2 + (r.y - 500) ** 2
-          return dSq > 150 ** 2
-        })
-      )
-      setEventosActivos(prev => [...prev, { tipo: 'sequia', x: 500, y: 500, radio: 150, ticksRestantes: 20 }])
-      setFeedbackEvento('🌵 Evento Sequía aplicado en modo local: recursos eliminados en el centro')
+  // HU15, HU16, HU17: el servidor decide el cooldown; un fallo no lo arranca
+  const dispararEvento = (tipo, setCooldown, mensaje) => {
+    const avisar = (texto) => {
+      setFeedbackEvento(texto)
       setTimeout(() => setFeedbackEvento(''), 4000)
     }
+
+    fetch(`/api/eventos/${tipo}`, { method: 'POST' })
+      .then(async r => {
+        if (!r.ok && r.status !== 429) throw new Error()
+        const d = await r.json()
+        setCooldown(d.cooldownSegundos)
+        avisar(r.ok ? mensaje : `Otro usuario ya lo disparo: espera ${d.cooldownSegundos} s`)
+      })
+      .catch(() => avisar('No se pudo disparar el evento: el servidor no responde'))
   }
 
-  // HU16: Funcion para disparar evento Depredador con Cooldown
-  const dispararDepredador = () => {
-    if (cooldownDepredador > 0) return
-
-    fetch('/api/eventos/depredador', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cantidad: 3, zona: { x: 500, y: 500, radio: 200 } }),
-    })
-      .then(r => {
-        if (!r.ok) throw new Error()
-        return r.json()
-      })
-      .then(d => {
-        setCooldownDepredador(d.cooldownSegundos || 12)
-        setFeedbackEvento('🐍 Depredadores invocados: las hormigas cercanas huyen')
-        setTimeout(() => setFeedbackEvento(''), 4000)
-      })
-      .catch(() => {
-        setCooldownDepredador(12)
-        setFeedbackEvento('🐍 Depredadores invocados en modo local')
-        setTimeout(() => setFeedbackEvento(''), 4000)
-      })
-
-    if (status.difusion !== 'Online') {
-      setCooldownDepredador(12)
-      const nuevosDeps = []
-      for (let i = 0; i < 3; i++) {
-        const angulo = Math.random() * Math.PI * 2
-        const dist = Math.random() * 120
-        nuevosDeps.push({
-          id: `dep-local-${Date.now()}-${i}`,
-          x: Math.max(0, Math.min(999, Math.round(500 + Math.cos(angulo) * dist))),
-          y: Math.max(0, Math.min(999, Math.round(500 + Math.sin(angulo) * dist))),
-          ticksRestantes: 25,
-          radioAmenaza: 80,
-        })
-      }
-      setDepredadores(prev => [...prev, ...nuevosDeps])
-      setEventosActivos(prev => [...prev, { tipo: 'depredador', x: 500, y: 500, radio: 200, ticksRestantes: 25 }])
-      setFeedbackEvento('🐍 Depredadores invocados en modo local: las hormigas huyen')
-      setTimeout(() => setFeedbackEvento(''), 4000)
-    }
-  }
-
-  // HU17: Funcion para disparar evento Abundancia de Recursos con Cooldown
-  const dispararAbundancia = () => {
-    if (cooldownAbundancia > 0) return
-
-    fetch('/api/eventos/abundancia', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cantidad: 120, zona: { x: 500, y: 500, radio: 180 } }),
-    })
-      .then(r => {
-        if (!r.ok) throw new Error()
-        return r.json()
-      })
-      .then(d => {
-        setCooldownAbundancia(d.cooldownSegundos || 10)
-        setFeedbackEvento('🌿 Abundancia inyectada: terreno enriquecido con recursos frescos')
-        setTimeout(() => setFeedbackEvento(''), 4000)
-      })
-      .catch(() => {
-        setCooldownAbundancia(10)
-        setFeedbackEvento('🌿 Abundancia aplicada en modo local')
-        setTimeout(() => setFeedbackEvento(''), 4000)
-      })
-
-    if (status.difusion !== 'Online') {
-      setCooldownAbundancia(10)
-      const nuevosRecursos = []
-      let nextId = Date.now()
-      for (let i = 0; i < 100; i++) {
-        const ang = Math.random() * Math.PI * 2
-        const dist = Math.random() * 160
-        nuevosRecursos.push({
-          id: nextId++,
-          x: Math.max(0, Math.min(999, Math.round(500 + Math.cos(ang) * dist))),
-          y: Math.max(0, Math.min(999, Math.round(500 + Math.sin(ang) * dist))),
-          valor: 1,
-        })
-      }
-      setRecursos(prev => [...prev, ...nuevosRecursos])
-      setEventosActivos(prev => [...prev, { tipo: 'abundancia', x: 500, y: 500, radio: 180, ticksRestantes: 25 }])
-      setFeedbackEvento('🌿 Abundancia aplicada en modo local: +100 recursos inyectados')
-      setTimeout(() => setFeedbackEvento(''), 4000)
-    }
-  }
+  const dispararSequia = () => dispararEvento('sequia', setCooldownSequia, '🌵 Sequía aplicada: recursos eliminados en la zona')
+  const dispararDepredador = () => dispararEvento('depredador', setCooldownDepredador, '🐍 Depredador invocado: las hormigas cercanas huyen')
+  const dispararAbundancia = () => dispararEvento('abundancia', setCooldownAbundancia, '🌿 Abundancia inyectada: terreno enriquecido con recursos')
 
   const estaSaturado = saturado || modoTestSaturado
 
@@ -451,7 +344,7 @@ function App() {
             {/* HU18: Atributos de distribucion web nativa sin instalacion */}
             <div className="hud-row">
               <span>Motor gráfico (HU18):</span>
-              <span className="val" style={{ color: '#38bdf8' }}>WebGL (Sin instalación)</span>
+              <span className="val" style={{ color: '#38bdf8' }}>Canvas 2D (Sin instalación)</span>
             </div>
             <div className="hud-row">
               <span>Acceso espectador:</span>

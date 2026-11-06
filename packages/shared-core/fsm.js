@@ -78,4 +78,4 @@ function decidir(agente, { depredadores = [], recursos = [], nido }, rand = Math
   return mover(a.vx, a.vy);
 }
 
-module.exports = { ESTADOS, decidir };
+module.exports = { ESTADOS, RADIO_PANICO, decidir };
