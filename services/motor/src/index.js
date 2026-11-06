@@ -53,7 +53,6 @@ const redisSub = crearClienteRedis();
 
 async function start() {
     try {
-        await redis.connect();
         await redis.set("simulacion:agentes_activos", agentes.length);
         console.log("[Motor] Conectado a Redis y metrica inicial publicada");
     } catch (err) {
@@ -61,7 +60,6 @@ async function start() {
     }
 
     try {
-        await redisSub.connect();
         const canalSequia = CANALES_REDIS.EVENTO_SEQUIA || "canal:eventos:sequia";
         const canalDepredador = CANALES_REDIS.EVENTO_DEPREDADOR || "canal:eventos:depredador";
         const canalAbundancia = CANALES_REDIS.EVENTO_ABUNDANCIA || "canal:eventos:abundancia";

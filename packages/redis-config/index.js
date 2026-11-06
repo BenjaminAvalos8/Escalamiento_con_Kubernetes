@@ -7,7 +7,7 @@ function crearClienteRedis(opciones = {}) {
   return new Redis({
     host,
     port: Number(port),
-    lazyConnect: true,
+    maxRetriesPerRequest: null, // espera a Redis aunque arranque despues que el servicio
     retryStrategy(times) {
       return Math.min(times * 100, 3000);
     },

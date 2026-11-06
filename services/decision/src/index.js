@@ -5,7 +5,6 @@ const workerId = process.env.HOSTNAME || `worker-${Math.random().toString(36).su
 
 async function start() {
   try {
-    await redis.connect();
     console.log(`[Decision] Conectado a Redis como worker ${workerId}`);
   } catch (err) {
     console.error("[Decision] Error al conectar a Redis:", err.message);

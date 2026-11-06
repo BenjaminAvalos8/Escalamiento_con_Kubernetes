@@ -21,8 +21,9 @@ const redisSub = crearClienteRedis();
 const workerId = process.env.HOSTNAME || `difusion-${Math.random().toString(36).substring(2, 9)}`;
 
 function actualizarEspectadores() {
+  // Cada replica publica su propia cuenta; eventos suma todas. El TTL borra la de un pod caido.
   const count = io.engine ? io.engine.clientsCount : 0;
-  redis.set("simulacion:espectadores_activos", count).catch(() => {});
+  redis.set(`espectadores:${workerId}`, count, "EX", 5).catch(() => {});
 }
 
 io.on("connection", (socket) => {
@@ -37,14 +38,12 @@ io.on("connection", (socket) => {
 
 async function start() {
   try {
-    await redis.connect().catch(() => {});
-    await redis.set("simulacion:espectadores_activos", 0).catch(() => {});
-    await redisSub.connect();
     console.log(`[Difusion] Conectado a Redis como worker ${workerId}`);
 
     setInterval(async () => {
       try {
         await redis.set(`heartbeat:difusion:${workerId}`, "1", "EX", 5);
+        actualizarEspectadores();
       } catch (err) {
         // Manejo silencioso en reconexion
       }

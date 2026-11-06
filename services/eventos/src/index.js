@@ -6,9 +6,6 @@ const app = express();
 app.use(express.json());
 
 const redis = crearClienteRedis();
-redis.connect().catch((err) => {
-  console.error("[Eventos] Error al conectar a Redis:", err.message);
-});
 
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });
@@ -18,8 +15,9 @@ app.get("/metrics", async (req, res) => {
   try {
     const val = await redis.get("simulacion:agentes_activos");
     const total = parseInt(val, 10) || 0;
-    const valEsp = await redis.get("simulacion:espectadores_activos");
-    const totalEsp = parseInt(valEsp, 10) || 0;
+    const clavesEsp = await redis.keys("espectadores:*");
+    const valoresEsp = clavesEsp.length ? await redis.mget(clavesEsp) : [];
+    const totalEsp = valoresEsp.reduce((suma, v) => suma + (parseInt(v, 10) || 0), 0);
     res.setHeader("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
     res.send(
       "# HELP anthill_agentes_activos Cantidad de agentes simulados activos\n" +
