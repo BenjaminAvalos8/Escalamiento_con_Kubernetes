@@ -3,6 +3,8 @@ import './MapaEcosistema.css'
 
 export default function MapaEcosistema({
   agentes = [],
+  recursos = [],
+  eventosActivos = [],
   ancho = 1000,
   alto = 1000,
   umbralAgregado = 300,
@@ -17,7 +19,7 @@ export default function MapaEcosistema({
   const dragStartRef = useRef({ x: 0, y: 0 })
   const hasCenteredRef = useRef(false)
 
-  // Umbral y lista de agentes en ref para bucle de renderizado a 60fps
+  // Umbral y listas en refs para bucle de renderizado a 60fps
   const umbralRef = useRef(umbralAgregado)
   useEffect(() => {
     umbralRef.current = umbralAgregado
@@ -27,6 +29,16 @@ export default function MapaEcosistema({
   useEffect(() => {
     agentesListRef.current = agentes
   }, [agentes])
+
+  const recursosListRef = useRef(recursos)
+  useEffect(() => {
+    recursosListRef.current = recursos
+  }, [recursos])
+
+  const eventosListRef = useRef(eventosActivos)
+  useEffect(() => {
+    eventosListRef.current = eventosActivos
+  }, [eventosActivos])
 
   // Estado minimo para re-render de UI
   const [renderTrigger, setRenderTrigger] = useState(0)
@@ -118,7 +130,6 @@ export default function MapaEcosistema({
     if (!canvas) return
 
     const handleWheelNative = (e) => {
-      // Detener cualquier zoom o scroll del navegador web
       e.preventDefault()
       e.stopPropagation()
 
@@ -142,7 +153,6 @@ export default function MapaEcosistema({
       setRenderTrigger(n => n + 1)
     }
 
-    // passive: false es esencial para que preventDefault funcione contra el navegador
     canvas.addEventListener('wheel', handleWheelNative, { passive: false })
     return () => canvas.removeEventListener('wheel', handleWheelNative)
   }, [notifyHUD])
@@ -197,7 +207,7 @@ export default function MapaEcosistema({
       const totalAgentes = agentesListRef.current.length
       const esModoAgregado = totalAgentes > umbralRef.current
 
-      // 1. Interpolacion suave de posiciones (Lerp) solo en modo detallado para optimizar rendimiento
+      // 1. Interpolacion suave de posiciones (Lerp) solo en modo detallado
       if (!esModoAgregado) {
         for (const p of animAgentesRef.current.values()) {
           p.x += (p.targetX - p.x) * 0.18
@@ -237,7 +247,7 @@ export default function MapaEcosistema({
       ctx.lineWidth = 1.5
       ctx.stroke()
 
-      // Cuadricula del tamano exacto de los puntos (cuando el zoom lo amerita)
+      // Cuadricula (cuando el zoom lo amerita)
       if (cellSize >= 6) {
         ctx.strokeStyle = 'rgba(51, 65, 85, 0.35)'
         ctx.lineWidth = 0.75
@@ -260,6 +270,45 @@ export default function MapaEcosistema({
       ctx.strokeStyle = '#38bdf8'
       ctx.lineWidth = 2
       ctx.strokeRect(worldScreenX, worldScreenY, worldScreenW, worldScreenH)
+
+      // HU15: Zona de sequia activa visualmente (alerta en el terreno)
+      const eventos = eventosListRef.current || []
+      for (let i = 0; i < eventos.length; i++) {
+        const ev = eventos[i]
+        if (ev.tipo === 'sequia') {
+          const zx = camera.x + ev.x * cellSize
+          const zy = camera.y + ev.y * cellSize
+          const zr = ev.radio * cellSize
+
+          ctx.beginPath()
+          ctx.arc(zx, zy, zr, 0, Math.PI * 2)
+          ctx.fillStyle = 'rgba(239, 68, 68, 0.14)'
+          ctx.fill()
+          ctx.strokeStyle = 'rgba(249, 115, 22, 0.75)'
+          ctx.lineWidth = 2
+          ctx.setLineDash([8, 5])
+          ctx.stroke()
+          ctx.setLineDash([])
+        }
+      }
+
+      // HU15: Renderizado de Recursos (Alimento)
+      const recursos = recursosListRef.current || []
+      if (recursos.length > 0) {
+        const recRadius = Math.max(2, cellSize * 0.38)
+        ctx.fillStyle = '#10b981' // Verde esmeralda brillante
+
+        for (let i = 0; i < recursos.length; i++) {
+          const r = recursos[i]
+          if (r.x >= startCol && r.x <= endCol && r.y >= startRow && r.y <= endRow) {
+            const rx = camera.x + r.x * cellSize + cellSize / 2
+            const ry = camera.y + r.y * cellSize + cellSize / 2
+            ctx.beginPath()
+            ctx.arc(rx, ry, recRadius, 0, Math.PI * 2)
+            ctx.fill()
+          }
+        }
+      }
 
       // 3. Renderizado de entidades: Agregado vs Detallado (HU13)
       if (esModoAgregado) {
@@ -284,7 +333,6 @@ export default function MapaEcosistema({
           const screenX = camera.x + cx * cellSize
           const screenY = camera.y + cy * cellSize
 
-          // Escala de densidad: Amarillo -> Naranja -> Rojo -> Magenta
           if (count >= 10) {
             ctx.fillStyle = 'rgba(217, 70, 239, 0.90)'
           } else if (count >= 5) {
@@ -336,7 +384,7 @@ export default function MapaEcosistema({
           }
         }
 
-        // 4. Indicador numerico en esquina inferior derecha para casillas con multiples hormigas
+        // Indicador numerico en casillas con multiples hormigas
         if (cellCounts && cellSize >= 14) {
           const fontSize = Math.min(10, Math.max(8, Math.floor(cellSize * 0.35)))
           ctx.font = `bold ${fontSize}px ui-monospace, Consolas, monospace`

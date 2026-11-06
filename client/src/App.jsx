@@ -12,9 +12,34 @@ const crearAgentesMock = (n = 100) =>
     y: Math.max(0, Math.min(999, 500 + Math.floor(Math.random() * 60) - 30)),
   }))
 
+const crearRecursosMock = (n = 200) => {
+  const lista = []
+  let id = 1
+  const focos = [
+    { x: 500, y: 500, disp: 110, cant: Math.floor(n * 0.45) },
+    { x: 280, y: 280, disp: 70, cant: Math.floor(n * 0.15) },
+    { x: 720, y: 280, disp: 70, cant: Math.floor(n * 0.15) },
+    { x: 300, y: 720, disp: 70, cant: Math.floor(n * 0.12) },
+    { x: 720, y: 720, disp: 70, cant: Math.floor(n * 0.13) },
+  ]
+  for (const f of focos) {
+    for (let i = 0; i < f.cant; i++) {
+      lista.push({
+        id: id++,
+        x: Math.max(0, Math.min(999, Math.round(f.x + (Math.random() * 2 - 1) * f.disp))),
+        y: Math.max(0, Math.min(999, Math.round(f.y + (Math.random() * 2 - 1) * f.disp))),
+        valor: 1,
+      })
+    }
+  }
+  return lista
+}
+
 function App() {
   const [status, setStatus] = useState({ difusion: 'Desconectado', eventos: 'Verificando...' })
   const [agentes, setAgentes] = useState(() => crearAgentesMock(100))
+  const [recursos, setRecursos] = useState(() => crearRecursosMock(200))
+  const [eventosActivos, setEventosActivos] = useState([])
   const [tick, setTick] = useState(0)
   const [replicasDecision, setReplicasDecision] = useState(1)
   const [replicasDifusion, setReplicasDifusion] = useState(1)
@@ -25,7 +50,21 @@ function App() {
   const [saturado, setSaturado] = useState(false)
   const [modoTestSaturado, setModoTestSaturado] = useState(false)
   const [umbralAgregado, setUmbralAgregado] = useState(300)
+
+  // HU15: Estado para control de Cooldown del evento Sequia
+  const [cooldownSequia, setCooldownSequia] = useState(0)
+  const [feedbackEvento, setFeedbackEvento] = useState('')
+
   const ticksRecibidosRef = useRef(0)
+
+  // Reloj de cuenta regresiva para el cooldown de eventos
+  useEffect(() => {
+    if (cooldownSequia <= 0) return
+    const timer = setInterval(() => {
+      setCooldownSequia(c => Math.max(0, c - 1))
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [cooldownSequia])
 
   useEffect(() => {
     fetch('/health-eventos')
@@ -80,6 +119,12 @@ function App() {
       if (Array.isArray(data?.agentes)) {
         setAgentes(data.agentes)
         setTick(data.tick || 0)
+      }
+      if (Array.isArray(data?.recursos)) {
+        setRecursos(data.recursos)
+      }
+      if (Array.isArray(data?.eventosActivos)) {
+        setEventosActivos(data.eventosActivos)
       }
       if (typeof data?.duracionTickMs === 'number') {
         setDuracionTickMs(data.duracionTickMs)
@@ -145,6 +190,45 @@ function App() {
     }
   }
 
+  // HU15: Funcion para disparar evento Sequia con Cooldown
+  const dispararSequia = () => {
+    if (cooldownSequia > 0) return
+
+    fetch('/api/eventos/sequia', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ zona: { x: 500, y: 500, radio: 150 } }),
+    })
+      .then(r => {
+        if (!r.ok) throw new Error()
+        return r.json()
+      })
+      .then(d => {
+        setCooldownSequia(d.cooldownSegundos || 10)
+        setFeedbackEvento('Evento Sequía aplicado: recursos eliminados en la zona central')
+        setTimeout(() => setFeedbackEvento(''), 4000)
+      })
+      .catch(() => {
+        setCooldownSequia(10)
+        setFeedbackEvento('Evento Sequía aplicado en modo local')
+        setTimeout(() => setFeedbackEvento(''), 4000)
+      })
+
+    // Modo autonomo/local para visualizacion inmediata
+    if (status.difusion !== 'Online') {
+      setCooldownSequia(10)
+      setRecursos(prev =>
+        prev.filter(r => {
+          const dSq = (r.x - 500) ** 2 + (r.y - 500) ** 2
+          return dSq > 150 ** 2
+        })
+      )
+      setEventosActivos([{ tipo: 'sequia', x: 500, y: 500, radio: 150, ticksRestantes: 20 }])
+      setFeedbackEvento('Evento Sequía aplicado en modo local: recursos eliminados en el centro')
+      setTimeout(() => setFeedbackEvento(''), 4000)
+    }
+  }
+
   const estaSaturado = saturado || modoTestSaturado
 
   return (
@@ -160,9 +244,18 @@ function App() {
         </div>
       )}
 
+      {/* Toast de notificacion de evento (HU15) */}
+      {feedbackEvento && (
+        <div className="alerta-evento-toast" role="status">
+          <span>🌵 {feedbackEvento}</span>
+        </div>
+      )}
+
       {/* Canvas del mundo 1000x1000 interactivo (fullscreen) */}
       <MapaEcosistema
         agentes={agentes}
+        recursos={recursos}
+        eventosActivos={eventosActivos}
         ancho={1000}
         alto={1000}
         umbralAgregado={umbralAgregado}
@@ -182,6 +275,13 @@ function App() {
             </div>
 
             <ContadorAgentes agentes={agentes.length} />
+
+            <div className="hud-row">
+              <span>Recursos visibles:</span>
+              <span className="val" style={{ color: '#34d399', fontWeight: 'bold' }}>
+                {recursos.length}
+              </span>
+            </div>
 
             <div className="hud-row">
               <span>Modo del mapa:</span>
@@ -261,20 +361,32 @@ function App() {
           </div>
         </div>
 
-        {/* Panel Inferior Central: Controles de Carga */}
+        {/* Panel Inferior Central: Controles de Carga y Eventos Ambientales */}
         <div className="hud-bottom-center hud-interactive">
           <div className="hud-card action-bar">
             <button
               onClick={() => inyectarCarga(100)}
               className="btn-action btn-spawn"
+              title="Inyecta 100 agentes en la simulación"
             >
-              Inyectar carga (+100 agentes)
+              +100 agentes
             </button>
             <button
               onClick={() => purgarCarga(100)}
               className="btn-action btn-purge"
+              title="Purga 100 agentes de la simulación"
             >
-              Purgar carga (-100 agentes)
+              -100 agentes
+            </button>
+
+            {/* HU15: Boton interactivo de Sequia con Cooldown */}
+            <button
+              onClick={dispararSequia}
+              disabled={cooldownSequia > 0}
+              className={`btn-action btn-sequia ${cooldownSequia > 0 ? 'btn-disabled' : ''}`}
+              title="HU15: Provoca una sequía eliminando recursos de una zona designada. Cooldown: 10s"
+            >
+              {cooldownSequia > 0 ? `🌵 Sequía (${cooldownSequia}s)` : '🌵 Provocar Sequía'}
             </button>
           </div>
           <div className="hud-tip">

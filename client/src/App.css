@@ -103,45 +103,38 @@
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
+  z-index: 20;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  z-index: 20;
 }
 
 .action-bar {
   display: flex;
+  align-items: center;
   gap: 12px;
-  padding: 8px 12px;
+  padding: 8px 14px;
+  background: rgba(15, 23, 42, 0.92);
 }
 
 .btn-action {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 8px;
+  padding: 8px 14px;
   font-size: 12px;
   font-weight: 600;
+  border-radius: 8px;
+  border: none;
   cursor: pointer;
-  color: #fff;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-
-.btn-action:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
-}
-
-.btn-action:active {
-  transform: translateY(0);
+  transition: all 0.15s ease;
+  color: #ffffff;
 }
 
 .btn-spawn {
-  background: #059669;
+  background: #0284c7;
 }
 
 .btn-spawn:hover {
-  background: #10b981;
+  background: #0369a1;
 }
 
 .btn-purge {
@@ -149,7 +142,26 @@
 }
 
 .btn-purge:hover {
-  background: #ef4444;
+  background: #b91c1c;
+}
+
+/* HU15: Estilos de boton de Sequia */
+.btn-sequia {
+  background: #d97706;
+}
+
+.btn-sequia:hover:not(:disabled) {
+  background: #b45309;
+}
+
+.btn-disabled,
+.btn-action:disabled {
+  background: #475569 !important;
+  color: #94a3b8 !important;
+  cursor: not-allowed !important;
+  opacity: 0.65;
+  transform: none !important;
+  box-shadow: none !important;
 }
 
 .hud-tip {
@@ -208,6 +220,27 @@
 .alerta-texto span {
   font-size: 11px;
   color: #fca5a5;
+}
+
+/* Toast de retroalimentacion de eventos */
+.alerta-evento-toast {
+  position: fixed;
+  bottom: 84px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  padding: 8px 16px;
+  background: rgba(30, 41, 59, 0.95);
+  border: 1px solid #d97706;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  color: #fef3c7;
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
 }
 
 .texto-alerta {
