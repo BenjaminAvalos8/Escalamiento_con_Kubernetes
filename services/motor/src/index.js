@@ -96,7 +96,7 @@ async function start() {
                         radio: 150,
                     };
                     const antes = recursos.length;
-                    recursos = recursos.filter((r) => Math.hypot(r.x - zona.x, r.y - zona.y) > zona.radio);
+                    recursos = recursos.filter((r) => Math.max(Math.abs(r.x - zona.x), Math.abs(r.y - zona.y)) > zona.radio);
                     console.log(`[Motor] Sequia en (${zona.x}, ${zona.y}): ${antes - recursos.length} recursos eliminados`);
                     eventosActivos.push({ tipo: 'sequia', ...zona, ticksRestantes: segundosATicks(duracionSegundos) });
                 } catch (e) {
@@ -132,12 +132,10 @@ async function start() {
                     const zona = { x: CENTRO_X, y: CENTRO_Y, radio: 180 };
                     let nextId = recursos.reduce((max, r) => Math.max(max, r.id), 0) + 1;
                     for (let i = 0; i < PARCHES_ABUNDANCIA; i++) {
-                        const ang = Math.random() * Math.PI * 2;
-                        const dist = Math.random() * zona.radio;
                         recursos.push({
                             id: nextId++,
-                            x: Math.round(zona.x + Math.cos(ang) * dist),
-                            y: Math.round(zona.y + Math.sin(ang) * dist),
+                            x: Math.round(zona.x + (Math.random() * 2 - 1) * zona.radio),
+                            y: Math.round(zona.y + (Math.random() * 2 - 1) * zona.radio),
                             unidades: UNIDADES_POR_PARCHE,
                         });
                     }
@@ -154,6 +152,7 @@ async function start() {
 
     let tick = 0;
     let comidaNido = 0;
+    const inicioMs = Date.now();
 
     // Reparte los agentes en lotes (scatter) y espera las respuestas (gather)
     async function repartirYRecoger() {
@@ -229,7 +228,7 @@ async function start() {
                 const x = Math.max(0, Math.min(ANCHO - 1, dep.x + Math.floor(Math.random() * 3) - 1));
                 const y = Math.max(0, Math.min(ALTO - 1, dep.y + Math.floor(Math.random() * 3) - 1));
                 // No puede entrar al nido: si el paso lo lleva adentro, se queda donde esta
-                if (Math.hypot(x - NIDO.x, y - NIDO.y) > NIDO.radio) {
+                if (Math.max(Math.abs(x - NIDO.x), Math.abs(y - NIDO.y)) > NIDO.radio) {
                     dep.x = x;
                     dep.y = y;
                 }
@@ -245,6 +244,7 @@ async function start() {
             agentes: agentes.map(({ id, x, y, est }) => ({ id, x, y, est })),
             recursos,
             comidaNido,
+            segundos: Math.floor((Date.now() - inicioMs) / 1000),
             depredadores,
             eventosActivos,
             duracionTickMs,

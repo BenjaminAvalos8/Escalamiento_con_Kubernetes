@@ -12,6 +12,8 @@ const DESGASTE_POR_TICK = 0.1;
 const ENERGIA_POR_COMIDA = 25;
 const INERCIA = 0.8;
 
+// Nido y panico son cuadrados: distancia de Chebyshev
+const distancia = (a, b) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
 const limitar = (v, max) => Math.max(0, Math.min(max - 1, v));
 const azarPaso = (rand) => Math.floor(rand() * 3) - 1;
 
@@ -28,7 +30,7 @@ function decidir(agente, { depredadores = [], recursos = [], nido }, rand = Math
     return a;
   };
 
-  const amenaza = depredadores.find((d) => Math.hypot(a.x - d.x, a.y - d.y) <= RADIO_PANICO);
+  const amenaza = depredadores.find((d) => distancia(a, d) <= RADIO_PANICO);
   if (amenaza) {
     a.est = ESTADOS.HUYENDO;
     return mover(a.x >= amenaza.x ? 1 : -1, a.y >= amenaza.y ? 1 : -1);
@@ -37,7 +39,7 @@ function decidir(agente, { depredadores = [], recursos = [], nido }, rand = Math
 
   if (a.est === ESTADOS.VOLVIENDO) {
     mover(Math.sign(nido.x - a.x), Math.sign(nido.y - a.y));
-    if (Math.hypot(a.x - nido.x, a.y - nido.y) <= nido.radio) {
+    if (distancia(a, nido) <= nido.radio) {
       a.c = false;
       a.e = 100;
       a.entrega = true;
