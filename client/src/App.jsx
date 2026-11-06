@@ -447,6 +447,16 @@ function App() {
               <span>Escala (Zoom):</span>
               <span className="val">{camInfo.zoom}x</span>
             </div>
+
+            {/* HU18: Atributos de distribucion web nativa sin instalacion */}
+            <div className="hud-row">
+              <span>Motor gráfico (HU18):</span>
+              <span className="val" style={{ color: '#38bdf8' }}>WebGL (Sin instalación)</span>
+            </div>
+            <div className="hud-row">
+              <span>Acceso espectador:</span>
+              <span className="val" style={{ color: '#34d399' }}>Público (Sin login)</span>
+            </div>
           </div>
         </div>
 
