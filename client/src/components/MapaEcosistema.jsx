@@ -3,6 +3,8 @@ import './MapaEcosistema.css'
 
 // Mismo nido que el motor
 const NIDO = { x: 500, y: 500, radio: 20 }
+// Tamano de celda (px) desde el que se ven los numeros de hormigas por casilla
+const CELDA_MIN_NUMERO = 9
 
 export default function MapaEcosistema({
   agentes = [],
@@ -11,7 +13,7 @@ export default function MapaEcosistema({
   eventosActivos = [],
   ancho = 1000,
   alto = 1000,
-  umbralAgregado = 300,
+  modoCalor = false,
   onCameraChange,
 }) {
   const canvasRef = useRef(null)
@@ -24,10 +26,10 @@ export default function MapaEcosistema({
   const hasCenteredRef = useRef(false)
 
   // Umbral y listas en refs para bucle de renderizado a 60fps
-  const umbralRef = useRef(umbralAgregado)
+  const modoCalorRef = useRef(modoCalor)
   useEffect(() => {
-    umbralRef.current = umbralAgregado
-  }, [umbralAgregado])
+    modoCalorRef.current = modoCalor
+  }, [modoCalor])
 
   const agentesListRef = useRef(agentes)
   useEffect(() => {
@@ -58,7 +60,10 @@ export default function MapaEcosistema({
 
   // Sincronizar objetivos de animacion cuando llegan nuevos datos del servidor
   useEffect(() => {
-    if (agentes.length > umbralRef.current) return
+    if (modoCalorRef.current) {
+      animAgentesRef.current.clear()
+      return
+    }
 
     const currentMap = animAgentesRef.current
     const activeIds = new Set()
@@ -209,8 +214,8 @@ export default function MapaEcosistema({
       const camera = cameraRef.current
       const cellSize = BASE_CELL * zoom
 
-      const totalAgentes = agentesListRef.current.length
-      const esModoAgregado = totalAgentes > umbralRef.current
+      const esModoAgregado = modoCalorRef.current
+      const conNumero = cellSize >= CELDA_MIN_NUMERO
 
       // 1. Interpolacion suave de posiciones (Lerp)
       if (!esModoAgregado) {
@@ -316,6 +321,11 @@ export default function MapaEcosistema({
       }
 
       // 3. Renderizado de entidades: Agregado vs Detallado (HU13)
+      // El numero de hormigas por casilla va en la esquina inferior derecha
+      ctx.font = `bold ${Math.min(11, Math.max(7, Math.floor(cellSize * 0.6)))}px ui-monospace, Consolas, monospace`
+      ctx.textAlign = 'right'
+      ctx.textBaseline = 'bottom'
+
       if (esModoAgregado) {
         const densidadPorCelda = new Map()
         const rawAgentes = agentesListRef.current
@@ -348,34 +358,26 @@ export default function MapaEcosistema({
 
           ctx.fillRect(screenX, screenY, cellSize, cellSize)
 
-          if (cellSize >= 12) {
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)'
-            ctx.lineWidth = 1
-            ctx.strokeRect(screenX, screenY, cellSize, cellSize)
-
-            if (cellSize >= 16) {
-              const fontSize = Math.min(11, Math.max(8, Math.floor(cellSize * 0.4)))
-              ctx.font = `bold ${fontSize}px ui-monospace, Consolas, monospace`
-              ctx.fillStyle = '#0f1013'
-              ctx.textAlign = 'center'
-              ctx.textBaseline = 'middle'
-              ctx.fillText(count, screenX + cellSize / 2, screenY + cellSize / 2)
-            }
+          if (conNumero) {
+            // Oscuro sobre los cuadros claros, claro sobre los tenues
+            ctx.fillStyle = count >= 2 ? '#0f1013' : '#FFFFFF'
+            ctx.fillText(count, screenX + cellSize - 1, screenY + cellSize)
           }
         }
       } else {
         ctx.fillStyle = '#E1EEF3'
         const antRadius = Math.max(2, cellSize * 0.4)
-        const cellCounts = cellSize >= 14 ? new Map() : null
+        const cellCounts = conNumero ? new Map() : null
+
+        ctx.beginPath()
 
         for (const p of animAgentesRef.current.values()) {
           const px = camera.x + p.x * cellSize + cellSize / 2
           const py = camera.y + p.y * cellSize + cellSize / 2
 
           if (px >= -antRadius && px <= cw + antRadius && py >= -antRadius && py <= ch + antRadius) {
-            ctx.beginPath()
+            ctx.moveTo(px + antRadius, py)
             ctx.arc(px, py, antRadius, 0, Math.PI * 2)
-            ctx.fill()
 
             if (cellCounts) {
               const cx = Math.round(p.targetX)
@@ -386,12 +388,10 @@ export default function MapaEcosistema({
           }
         }
 
-        if (cellCounts && cellSize >= 14) {
-          const fontSize = Math.min(10, Math.max(8, Math.floor(cellSize * 0.35)))
-          ctx.font = `bold ${fontSize}px ui-monospace, Consolas, monospace`
+        ctx.fill()
+
+        if (cellCounts) {
           ctx.fillStyle = '#C7E4E8'
-          ctx.textAlign = 'right'
-          ctx.textBaseline = 'bottom'
 
           for (const [key, count] of cellCounts.entries()) {
             if (count > 1) {

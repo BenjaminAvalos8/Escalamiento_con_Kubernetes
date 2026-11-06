@@ -45,6 +45,11 @@ assert.equal(decidir({ ...base, est: E.HUYENDO }, { nido }).est, E.EXPLORANDO);
 const azar = () => { let s = 0; return () => (s = (s * 7 + 3) % 11) / 11; };
 assert.deepEqual(decidir(base, { nido }, azar()), decidir(base, { nido }, azar()));
 
+// En un tick sin paso no se mueve, pero la energia sigue bajando
+a = decidir(base, { recursos: [{ id: 7, x: 110, y: 100 }], nido }, Math.random, false);
+assert.equal(a.x, 100);
+assert.equal(a.e, 99.9);
+
 // Nunca sale del mapa
 assert.equal(decidir({ ...base, x: 0, y: 0, vx: -1, vy: -1 }, { nido }, () => 0).x, 0);
 

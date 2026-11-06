@@ -1,5 +1,5 @@
 const { crearClienteRedis } = require("@anthill/redis-config");
-const { CANALES_REDIS, ESTADOS, RADIO_PANICO } = require("@anthill/shared-core");
+const { CANALES_REDIS, ESTADOS, RADIO_PANICO, TICKS_POR_PASO } = require("@anthill/shared-core");
 
 const N = Number(process.env.AGENTES_INICIALES ?? 100);
 if (!Number.isInteger(N) || N < 0) {
@@ -225,6 +225,7 @@ async function start() {
         if (depredadores.length > 0) {
             for (const dep of depredadores) {
                 dep.ticksRestantes -= 1;
+                if (tick % TICKS_POR_PASO !== 0) continue;
                 const x = Math.max(0, Math.min(ANCHO - 1, dep.x + Math.floor(Math.random() * 3) - 1));
                 const y = Math.max(0, Math.min(ALTO - 1, dep.y + Math.floor(Math.random() * 3) - 1));
                 // No puede entrar al nido: si el paso lo lleva adentro, se queda donde esta

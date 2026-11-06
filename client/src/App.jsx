@@ -7,7 +7,8 @@ import MapaEcosistema from './components/MapaEcosistema.jsx'
 import LuminousCard from './components/LuminousCard.jsx'
 import NeumorphicButton from './components/NeumorphicButton.jsx'
 
-const UMBRAL_AGREGADO = 300
+// Por encima, el mapa pasa solo a calor para no saturar el navegador (HU13)
+const UMBRAL_AGREGADO = 5000
 const TICKS_POR_SEGUNDO = 10
 
 const formatearTiempo = (segundos) =>
@@ -30,6 +31,7 @@ function App() {
   const [segundosCorrida, setSegundosCorrida] = useState(0)
   const [duracionTickMs, setDuracionTickMs] = useState(0)
   const [saturado, setSaturado] = useState(false)
+  const [calorElegido, setCalorElegido] = useState(false)
 
   // Cooldowns de eventos (HU15, HU16, HU17)
   const [cooldownSequia, setCooldownSequia] = useState(0)
@@ -156,7 +158,8 @@ function App() {
   }
   const segundosSequia = segundosRestantes('sequia')
   const segundosDepredador = segundosRestantes('depredador')
-  const modoAgregado = agentes.length > UMBRAL_AGREGADO
+  const calorForzado = agentes.length > UMBRAL_AGREGADO
+  const modoCalor = calorElegido || calorForzado
 
   return (
     <div className="app-viewport">
@@ -198,7 +201,7 @@ function App() {
         eventosActivos={eventosActivos}
         ancho={1000}
         alto={1000}
-        umbralAgregado={UMBRAL_AGREGADO}
+        modoCalor={modoCalor}
         onCameraChange={setCamInfo}
       />
 
@@ -230,8 +233,8 @@ function App() {
             </div>
             <div className="hud-row hud-row-extra">
               <span>Modo del mapa:</span>
-              <span className={`val ${modoAgregado ? 'texto-alerta' : ''}`}>
-                {modoAgregado ? 'Agregado (Calor)' : 'Detallado (Sprites)'}
+              <span className="val">
+                {calorForzado ? 'Calor (automático)' : modoCalor ? 'Calor' : 'Puntos'}
               </span>
             </div>
             <div className="hud-row">
@@ -300,6 +303,14 @@ function App() {
             <NeumorphicButton onClick={() => cambiarCarga('/api/admin/purge', 100)} variant="purge">
               <span>Purgar carga</span>
               <span className="btn-subtext">(-100 agentes)</span>
+            </NeumorphicButton>
+            <NeumorphicButton
+              onClick={() => setCalorElegido(c => !c)}
+              disabled={calorForzado}
+              title={calorForzado ? `Con más de ${UMBRAL_AGREGADO} agentes el mapa queda en calor` : 'Cambia cómo se dibujan las hormigas'}
+            >
+              <span>Ver mapa</span>
+              <span className="btn-subtext">{modoCalor ? 'como puntos' : 'de calor'}</span>
             </NeumorphicButton>
             <NeumorphicButton
               onClick={() => dispararEvento('sequia', setCooldownSequia, 'Sequía aplicada: recursos eliminados en la zona')}

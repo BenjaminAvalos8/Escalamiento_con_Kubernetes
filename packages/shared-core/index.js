@@ -1,8 +1,9 @@
-const { ESTADOS, RADIO_PANICO, decidir } = require("./fsm");
+const { ESTADOS, RADIO_PANICO, TICKS_POR_PASO, decidir } = require("./fsm");
 
 module.exports = {
   ESTADOS,
   RADIO_PANICO,
+  TICKS_POR_PASO,
   decidir,
   CANALES_REDIS: {
     MUNDO_ESTADO: "canal:mundo:estado",

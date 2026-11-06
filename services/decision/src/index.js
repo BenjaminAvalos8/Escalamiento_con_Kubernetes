@@ -1,5 +1,5 @@
 const { crearClienteRedis } = require("@anthill/redis-config");
-const { CANALES_REDIS, decidir } = require("@anthill/shared-core");
+const { CANALES_REDIS, TICKS_POR_PASO, decidir } = require("@anthill/shared-core");
 
 const redis = crearClienteRedis();
 const redisCola = crearClienteRedis(); // BRPOP bloquea su conexion: va aparte para no frenar el heartbeat
@@ -22,7 +22,10 @@ async function procesarLotes() {
       const [, mensaje] = await redisCola.brpop(CANALES_REDIS.COLA_PENDIENTES, 0);
       const { tick, agentes, depredadores, recursos, nido } = JSON.parse(mensaje);
       const percepcion = { depredadores, recursos, nido };
-      const resueltos = agentes.map((a) => decidir(a, percepcion, azarDe(tick, a.id)));
+      const resueltos = agentes.map((a) =>
+        // Sumar el id reparte los pasos entre ticks: no avanzan todas a la vez
+        decidir(a, percepcion, azarDe(tick, a.id), (tick + a.id) % TICKS_POR_PASO === 0)
+      );
       await redis.lpush(CANALES_REDIS.COLA_RESUELTAS, JSON.stringify({ tick, agentes: resueltos }));
     } catch (err) {
       console.error("[Decision] Error procesando lote:", err.message);

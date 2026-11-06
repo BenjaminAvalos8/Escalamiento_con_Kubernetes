@@ -11,6 +11,7 @@ const ENERGIA_CRITICA = 20;
 const DESGASTE_POR_TICK = 0.1;
 const ENERGIA_POR_COMIDA = 25;
 const INERCIA = 0.8;
+const TICKS_POR_PASO = 2; // Velocidad: una celda cada 3 ticks (unas 3,3 celdas/s)
 
 // Nido y panico son cuadrados: distancia de Chebyshev
 const distancia = (a, b) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
@@ -19,12 +20,13 @@ const azarPaso = (rand) => Math.floor(rand() * 3) - 1;
 
 // percepcion: { depredadores: [{x,y}], recursos: [{id,x,y}], nido: {x,y,radio} }
 // Devuelve el agente nuevo. `recoge` y `entrega` avisan al motor, que es la autoridad del mundo.
-function decidir(agente, { depredadores = [], recursos = [], nido }, rand = Math.random) {
+function decidir(agente, { depredadores = [], recursos = [], nido }, rand = Math.random, seMueve = true) {
   const a = { ...agente, e: Math.max(0, Math.round((agente.e - DESGASTE_POR_TICK) * 10) / 10) };
   delete a.recoge;
   delete a.entrega;
 
   const mover = (dx, dy) => {
+    if (!seMueve) return a;
     a.x = limitar(a.x + dx, ANCHO);
     a.y = limitar(a.y + dy, ALTO);
     return a;
@@ -80,4 +82,4 @@ function decidir(agente, { depredadores = [], recursos = [], nido }, rand = Math
   return mover(a.vx, a.vy);
 }
 
-module.exports = { ESTADOS, RADIO_PANICO, decidir };
+module.exports = { ESTADOS, RADIO_PANICO, TICKS_POR_PASO, decidir };
