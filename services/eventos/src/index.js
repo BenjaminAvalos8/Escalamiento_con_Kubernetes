@@ -52,7 +52,7 @@ app.post("/api/eventos/sequia", async (req, res) => {
     tipo: "sequia",
     timestamp: Date.now(),
     zona,
-    duracionTicks: req.body?.duracionTicks || 30,
+    duracionSegundos: 10,
   };
   try {
     const canal = CANALES_REDIS.EVENTO_SEQUIA || "canal:eventos:sequia";
@@ -74,7 +74,7 @@ app.post("/api/eventos/depredador", async (req, res) => {
     timestamp: Date.now(),
     cantidad,
     zona,
-    duracionTicks: req.body?.duracionTicks || 25,
+    duracionSegundos: 12,
   };
   try {
     const canal = CANALES_REDIS.EVENTO_DEPREDADOR || "canal:eventos:depredador";
@@ -96,7 +96,7 @@ app.post("/api/eventos/abundancia", async (req, res) => {
     timestamp: Date.now(),
     cantidad,
     zona,
-    duracionTicks: req.body?.duracionTicks || 30,
+    duracionSegundos: 15,
   };
   try {
     const canal = CANALES_REDIS.EVENTO_ABUNDANCIA || "canal:eventos:abundancia";

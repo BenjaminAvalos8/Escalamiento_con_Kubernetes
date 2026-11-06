@@ -9,13 +9,20 @@ if (!Number.isInteger(N) || N < 0) {
 
 const ANCHO = 1000, ALTO = 1000;
 const CENTRO_X = 500, CENTRO_Y = 500;
+const NIDO = { x: CENTRO_X, y: CENTRO_Y, radio: 20 };
+const TICK_MS = 100;
+const TAM_LOTE = 500;
+const ESPERA_LOTES_MS = 1000; // Si un worker muere, sus hormigas se quedan quietas ese tick
+const segundosATicks = (seg) => Math.ceil((seg * 1000) / TICK_MS);
 
 // Inicializacion de agentes con estado
 const agentes = Array.from({ length: N }, (_, id) => ({
     id,
     x: Math.max(0, Math.min(ANCHO - 1, CENTRO_X + Math.floor(Math.random() * 60) - 30)),
     y: Math.max(0, Math.min(ALTO - 1, CENTRO_Y + Math.floor(Math.random() * 60) - 30)),
-    estado: ESTADOS?.EXPLORANDO ?? 1,
+    est: ESTADOS.EXPLORANDO,
+    e: 100,
+    c: false,
 }));
 let siguienteId = N;
 console.log(`[Motor] Mundo 1000x1000 creado con ${agentes.length} agentes`);
@@ -50,6 +57,7 @@ let depredadores = []; // HU16: Depredadores temporales activos
 
 const redis = crearClienteRedis();
 const redisSub = crearClienteRedis();
+const redisCola = crearClienteRedis(); // BRPOP bloquea su conexion
 
 async function start() {
     try {
@@ -78,7 +86,9 @@ async function start() {
                             id: siguienteId++,
                             x: Math.max(0, Math.min(ANCHO - 1, CENTRO_X + Math.floor(Math.random() * 40) - 20)),
                             y: Math.max(0, Math.min(ALTO - 1, CENTRO_Y + Math.floor(Math.random() * 40) - 20)),
-                            estado: ESTADOS?.EXPLORANDO ?? 1,
+                            est: ESTADOS.EXPLORANDO,
+                            e: 100,
+                            c: false,
                         });
                     }
                     redis.set("simulacion:agentes_activos", agentes.length);
@@ -112,19 +122,7 @@ async function start() {
                     const eliminados = antes - recursos.length;
                     console.log(`[Motor] Sequia aplicada en (${zx}, ${zy}, r=${zRadio}): ${eliminados} recursos eliminados`);
 
-                    let agentesAfectados = 0;
-                    for (const a of agentes) {
-                        const dSq = (a.x - zx) ** 2 + (a.y - zy) ** 2;
-                        if (dSq <= zRadio ** 2) {
-                            a.estado = ESTADOS?.EXPLORANDO ?? 1;
-                            delete a.targetX;
-                            delete a.targetY;
-                            agentesAfectados++;
-                        }
-                    }
-                    console.log(`[Motor] ${agentesAfectados} agentes modificaron su estado interno por falta de recursos`);
-
-                    eventosActivos.push({ tipo: 'sequia', x: zx, y: zy, radio: zRadio, ticksRestantes: 20 });
+                    eventosActivos.push({ tipo: 'sequia', x: zx, y: zy, radio: zRadio, ticksRestantes: segundosATicks(data?.duracionSegundos ?? 10) });
                 } catch (e) {
                     console.error("[Motor] Error al procesar sequia:", e.message);
                 }
@@ -136,7 +134,7 @@ async function start() {
                     const zx = data?.zona?.x ?? 500;
                     const zy = data?.zona?.y ?? 500;
                     const zRadio = data?.zona?.radio ?? 200;
-                    const duracion = data?.duracionTicks || 25;
+                    const duracion = segundosATicks(data?.duracionSegundos ?? 12);
 
                     for (let i = 0; i < cant; i++) {
                         const angulo = Math.random() * Math.PI * 2;
@@ -163,7 +161,7 @@ async function start() {
                     const zx = data?.zona?.x ?? 500;
                     const zy = data?.zona?.y ?? 500;
                     const zRadio = data?.zona?.radio ?? 180;
-                    const duracion = data?.duracionTicks || 30;
+                    const duracion = segundosATicks(data?.duracionSegundos ?? 15);
 
                     let nextId = recursos.reduce((max, r) => Math.max(max, r.id), 0) + 1;
                     for (let i = 0; i < cant; i++) {
@@ -178,19 +176,6 @@ async function start() {
                     }
                     console.log(`[Motor] Abundancia aplicada: +${cant} recursos creados en (${zx}, ${zy}). Total recursos: ${recursos.length}`);
 
-                    // Transicion a BUSCANDO en agentes sin tarea asignada (EXPLORANDO)
-                    let agentesActivados = 0;
-                    for (const a of agentes) {
-                        const dSq = (a.x - zx) ** 2 + (a.y - zy) ** 2;
-                        if (a.estado === (ESTADOS?.EXPLORANDO ?? 1) || dSq <= (zRadio * 1.5) ** 2) {
-                            a.estado = ESTADOS?.BUSCANDO ?? 2;
-                            a.targetX = Math.max(0, Math.min(ANCHO - 1, Math.round(zx + (Math.random() * 60 - 30))));
-                            a.targetY = Math.max(0, Math.min(ALTO - 1, Math.round(zy + (Math.random() * 60 - 30))));
-                            agentesActivados++;
-                        }
-                    }
-                    console.log(`[Motor] ${agentesActivados} agentes transicionaron a BUSCANDO hacia las coordenadas ricas en recursos`);
-
                     eventosActivos.push({ tipo: 'abundancia', x: zx, y: zy, radio: zRadio, ticksRestantes: duracion });
                 } catch (e) {
                     console.error("[Motor] Error al procesar abundancia:", e.message);
@@ -202,7 +187,65 @@ async function start() {
     }
 
     let tick = 0;
-    setInterval(() => {
+    let comidaNido = 0;
+
+    // Reparte los agentes en lotes (scatter) y espera las respuestas (gather)
+    async function repartirYRecoger() {
+        const lotes = [];
+        const percepcion = {
+            depredadores: depredadores.map(({ x, y }) => ({ x, y })),
+            recursos: recursos.map(({ id, x, y }) => ({ id, x, y })),
+            nido: NIDO,
+        };
+        for (let i = 0; i < agentes.length; i += TAM_LOTE) {
+            lotes.push(JSON.stringify({ tick, agentes: agentes.slice(i, i + TAM_LOTE), ...percepcion }));
+        }
+
+        // Lo que quedo de un tick anterior ya no sirve
+        await redis.del(CANALES_REDIS.COLA_PENDIENTES, CANALES_REDIS.COLA_RESUELTAS);
+        if (lotes.length) await redis.lpush(CANALES_REDIS.COLA_PENDIENTES, ...lotes);
+
+        const decisiones = new Map();
+        const limite = performance.now() + ESPERA_LOTES_MS;
+        let pendientes = lotes.length;
+        while (pendientes > 0) {
+            const resta = limite - performance.now();
+            if (resta <= 0) break;
+            const respuesta = await redisCola.brpop(CANALES_REDIS.COLA_RESUELTAS, Math.max(resta / 1000, 0.01));
+            if (!respuesta) break;
+            const lote = JSON.parse(respuesta[1]);
+            if (lote.tick !== tick) continue;
+            for (const a of lote.agentes) decisiones.set(a.id, a);
+            pendientes--;
+        }
+        return decisiones;
+    }
+
+    // El motor es la autoridad: aplica en orden fijo y resuelve quien se lleva la comida
+    function aplicarDecisiones(decisiones) {
+        const porId = new Map(recursos.map((r) => [r.id, r]));
+        for (const a of agentes) {
+            const decision = decisiones.get(a.id);
+            if (!decision) continue;
+            const { recoge, entrega, ...nuevo } = decision;
+            if (recoge !== undefined) {
+                const recurso = porId.get(recoge);
+                if (recurso) {
+                    if (--recurso.valor <= 0) porId.delete(recoge);
+                } else {
+                    // Otra hormiga se llevo la ultima unidad en este mismo tick
+                    nuevo.c = false;
+                    nuevo.e = a.e;
+                    nuevo.est = ESTADOS.EXPLORANDO;
+                }
+            }
+            if (entrega) comidaNido++;
+            Object.assign(a, nuevo);
+        }
+        recursos = [...porId.values()];
+    }
+
+    async function ejecutarTick() {
         const tInicio = performance.now();
         tick++;
 
@@ -225,58 +268,33 @@ async function start() {
             depredadores = depredadores.filter(dep => dep.ticksRestantes > 0);
         }
 
-        // Movimiento de agentes
-        for (const a of agentes) {
-            // Prioridad 1: Huir de depredadores cercanos
-            let huyendo = false;
-            if (depredadores.length > 0) {
-                for (const dep of depredadores) {
-                    const dSq = (a.x - dep.x) ** 2 + (a.y - dep.y) ** 2;
-                    if (dSq <= dep.radioAmenaza ** 2) {
-                        huyendo = true;
-                        a.estado = ESTADOS?.HUYENDO ?? 3;
-                        const dist = Math.sqrt(dSq) || 1;
-                        const huirX = Math.round(((a.x - dep.x) / dist) * 3);
-                        const huirY = Math.round(((a.y - dep.y) / dist) * 3);
-                        a.x = Math.max(0, Math.min(ANCHO - 1, a.x + huirX));
-                        a.y = Math.max(0, Math.min(ALTO - 1, a.y + huirY));
-                        break;
-                    }
-                }
-            }
-
-            if (!huyendo) {
-                if (a.estado === (ESTADOS?.HUYENDO ?? 3)) {
-                    a.estado = ESTADOS?.EXPLORANDO ?? 1;
-                }
-
-                // HU17: Si esta BUSCANDO y tiene destino rico en recursos
-                if (a.estado === (ESTADOS?.BUSCANDO ?? 2) && a.targetX !== undefined && a.targetY !== undefined) {
-                    const dx = Math.sign(a.targetX - a.x);
-                    const dy = Math.sign(a.targetY - a.y);
-                    a.x = Math.max(0, Math.min(ANCHO - 1, a.x + dx));
-                    a.y = Math.max(0, Math.min(ALTO - 1, a.y + dy));
-
-                    if (Math.abs(a.targetX - a.x) <= 3 && Math.abs(a.targetY - a.y) <= 3) {
-                        delete a.targetX;
-                        delete a.targetY;
-                    }
-                } else {
-                    // Movimiento browniano regular (exploracion libre)
-                    const dx = Math.floor(Math.random() * 3) - 1;
-                    const dy = Math.floor(Math.random() * 3) - 1;
-                    a.x = Math.max(0, Math.min(ANCHO - 1, a.x + dx));
-                    a.y = Math.max(0, Math.min(ALTO - 1, a.y + dy));
-                }
-            }
-        }
+        aplicarDecisiones(await repartirYRecoger());
 
         const duracionTickMs = Math.round(performance.now() - tInicio);
-        const payload = JSON.stringify({ tick, agentes, recursos, depredadores, eventosActivos, duracionTickMs });
-        redis.publish(CANALES_REDIS.MUNDO_ESTADO, payload).catch((err) => {
-            console.error("[Motor] Error al publicar tick:", err.message);
+        const payload = JSON.stringify({
+            tick,
+            agentes: agentes.map(({ id, x, y, est }) => ({ id, x, y, est })),
+            recursos,
+            comidaNido,
+            depredadores,
+            eventosActivos,
+            duracionTickMs,
         });
-    }, 500);
+        await redis.publish(CANALES_REDIS.MUNDO_ESTADO, payload);
+        return performance.now() - tInicio;
+    }
+
+    // Un tick no arranca hasta que termina el anterior: si se satura, baja la cadencia
+    async function bucleTicks() {
+        let duracion = 0;
+        try {
+            duracion = await ejecutarTick();
+        } catch (err) {
+            console.error("[Motor] Error en el tick:", err.message);
+        }
+        setTimeout(bucleTicks, Math.max(0, TICK_MS - duracion));
+    }
+    bucleTicks();
 }
 
 start();
