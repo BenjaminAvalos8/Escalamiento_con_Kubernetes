@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import './MapaEcosistema.css'
 
+// Mismo nido que el motor
+const NIDO = { x: 500, y: 500, radio: 20 }
+
 export default function MapaEcosistema({
   agentes = [],
   recursos = [],
@@ -47,7 +50,7 @@ export default function MapaEcosistema({
   }, [eventosActivos])
 
   // Estado minimo para re-render de UI
-  const [renderTrigger, setRenderTrigger] = useState(0)
+  const [, setRenderTrigger] = useState(0)
   const [isDraggingState, setIsDraggingState] = useState(false)
   const animAgentesRef = useRef(new Map())
 
@@ -188,7 +191,7 @@ export default function MapaEcosistema({
       setIsDraggingState(false)
       try {
         e.target.releasePointerCapture(e.pointerId)
-      } catch (_) {}
+      } catch { /* ya estaba liberado */ }
     }
   }
 
@@ -218,7 +221,7 @@ export default function MapaEcosistema({
       }
 
       // 2. Fondo del viewport
-      ctx.fillStyle = '#0b0f19'
+      ctx.fillStyle = '#0f1013'
       ctx.fillRect(0, 0, cw, ch)
 
       // Culling: rangos de celdas visibles en pantalla
@@ -233,25 +236,28 @@ export default function MapaEcosistema({
       const worldScreenW = ancho * cellSize
       const worldScreenH = alto * cellSize
 
-      ctx.fillStyle = '#0f172a'
+      ctx.fillStyle = '#141519'
       ctx.fillRect(worldScreenX, worldScreenY, worldScreenW, worldScreenH)
 
-      // Nido central (coordenadas 500, 500)
-      const nestRadius = 25 * cellSize
-      const nestScreenX = camera.x + 500 * cellSize
-      const nestScreenY = camera.y + 500 * cellSize
+      // Pinta un cuadrado de `radio` celdas alrededor de (x, y)
+      const cuadrado = (x, y, radio, relleno, borde, punteado = []) => {
+        const px = camera.x + (x - radio) * cellSize
+        const py = camera.y + (y - radio) * cellSize
+        const lado = (2 * radio + 1) * cellSize
+        ctx.fillStyle = relleno
+        ctx.fillRect(px, py, lado, lado)
+        ctx.strokeStyle = borde
+        ctx.lineWidth = 1.5
+        ctx.setLineDash(punteado)
+        ctx.strokeRect(px, py, lado, lado)
+        ctx.setLineDash([])
+      }
 
-      ctx.beginPath()
-      ctx.arc(nestScreenX, nestScreenY, nestRadius, 0, Math.PI * 2)
-      ctx.fillStyle = 'rgba(30, 41, 59, 0.7)'
-      ctx.fill()
-      ctx.strokeStyle = '#0284c7'
-      ctx.lineWidth = 1.5
-      ctx.stroke()
+      cuadrado(NIDO.x, NIDO.y, NIDO.radio, 'rgba(35, 36, 40, 0.85)', '#C7E4E8')
 
       // Cuadricula
       if (cellSize >= 6) {
-        ctx.strokeStyle = 'rgba(51, 65, 85, 0.35)'
+        ctx.strokeStyle = 'rgba(147, 159, 161, 0.12)'
         ctx.lineWidth = 0.75
         ctx.beginPath()
 
@@ -269,94 +275,44 @@ export default function MapaEcosistema({
       }
 
       // Borde delimitador del mundo
-      ctx.strokeStyle = '#38bdf8'
+      ctx.strokeStyle = '#C7E4E8'
       ctx.lineWidth = 2
       ctx.strokeRect(worldScreenX, worldScreenY, worldScreenW, worldScreenH)
 
-      // Zonas de eventos ambientales activas visualmente (HU15 y HU17)
-      const eventos = eventosListRef.current || []
-      for (let i = 0; i < eventos.length; i++) {
-        const ev = eventos[i]
-        const zx = camera.x + ev.x * cellSize
-        const zy = camera.y + ev.y * cellSize
-        const zr = ev.radio * cellSize
-
+      // Zonas de eventos activas (HU15 y HU17)
+      for (const ev of eventosListRef.current || []) {
         if (ev.tipo === 'sequia') {
-          // HU15: Zona de sequia (halo anaranjado/rojo punteado)
-          ctx.beginPath()
-          ctx.arc(zx, zy, zr, 0, Math.PI * 2)
-          ctx.fillStyle = 'rgba(239, 68, 68, 0.14)'
-          ctx.fill()
-          ctx.strokeStyle = 'rgba(249, 115, 22, 0.75)'
-          ctx.lineWidth = 2
-          ctx.setLineDash([8, 5])
-          ctx.stroke()
-          ctx.setLineDash([])
+          cuadrado(ev.x, ev.y, ev.radio, 'rgba(212, 154, 85, 0.12)', 'rgba(212, 154, 85, 0.75)', [8, 5])
         } else if (ev.tipo === 'abundancia') {
-          // HU17: Zona de abundancia (halo esmeralda resplandeciente)
-          ctx.beginPath()
-          ctx.arc(zx, zy, zr, 0, Math.PI * 2)
-          ctx.fillStyle = 'rgba(16, 185, 129, 0.14)'
-          ctx.fill()
-          ctx.strokeStyle = 'rgba(52, 211, 153, 0.85)'
-          ctx.lineWidth = 2
-          ctx.setLineDash([6, 4])
-          ctx.stroke()
-          ctx.setLineDash([])
+          cuadrado(ev.x, ev.y, ev.radio, 'rgba(52, 211, 153, 0.08)', 'rgba(52, 211, 153, 0.7)', [6, 4])
         }
       }
 
-      // Renderizado de Recursos (Alimento del ecosistema)
-      const recursosActuales = recursosListRef.current || []
-      if (recursosActuales.length > 0) {
-        const recRadius = Math.max(2, cellSize * 0.38)
-        ctx.fillStyle = '#10b981'
-
-        for (let i = 0; i < recursosActuales.length; i++) {
-          const r = recursosActuales[i]
-          if (r.x >= startCol && r.x <= endCol && r.y >= startRow && r.y <= endRow) {
-            const rx = camera.x + r.x * cellSize + cellSize / 2
-            const ry = camera.y + r.y * cellSize + cellSize / 2
-            ctx.beginPath()
-            ctx.arc(rx, ry, recRadius, 0, Math.PI * 2)
-            ctx.fill()
-          }
+      // Comida (HU17): un cuadrado por parche, con minimo visible al alejar el zoom
+      const ladoComida = Math.max(3, cellSize * 0.8)
+      ctx.fillStyle = '#34d399'
+      for (const r of recursosListRef.current || []) {
+        if (r.x >= startCol && r.x <= endCol && r.y >= startRow && r.y <= endRow) {
+          ctx.fillRect(
+            camera.x + (r.x + 0.5) * cellSize - ladoComida / 2,
+            camera.y + (r.y + 0.5) * cellSize - ladoComida / 2,
+            ladoComida,
+            ladoComida,
+          )
         }
       }
 
-      // HU16: Renderizado de Depredadores
-      const deps = depredadoresListRef.current || []
-      if (deps.length > 0) {
-        for (let i = 0; i < deps.length; i++) {
-          const dep = deps[i]
-          const dx = camera.x + dep.x * cellSize + cellSize / 2
-          const dy = camera.y + dep.y * cellSize + cellSize / 2
-
-          const amenazaRadiusPx = (dep.radioAmenaza || 80) * cellSize
-          ctx.beginPath()
-          ctx.arc(dx, dy, amenazaRadiusPx, 0, Math.PI * 2)
-          ctx.fillStyle = 'rgba(168, 85, 247, 0.08)'
-          ctx.fill()
-          ctx.strokeStyle = 'rgba(168, 85, 247, 0.4)'
-          ctx.lineWidth = 1.5
-          ctx.setLineDash([6, 4])
-          ctx.stroke()
-          ctx.setLineDash([])
-
-          const depSize = Math.max(6, cellSize * 1.2)
-          ctx.save()
-          ctx.translate(dx, dy)
-          ctx.rotate(Math.PI / 4)
-          ctx.fillStyle = '#a855f7'
-          ctx.shadowColor = '#a855f7'
-          ctx.shadowBlur = 10
-          ctx.fillRect(-depSize / 2, -depSize / 2, depSize, depSize)
-          ctx.strokeStyle = '#e879f9'
-          ctx.lineWidth = 1.5
-          ctx.strokeRect(-depSize / 2, -depSize / 2, depSize, depSize)
-          ctx.restore()
-          ctx.shadowBlur = 0
-        }
+      // Depredadores (HU16): zona de panico y cuerpo cuadrados
+      for (const dep of depredadoresListRef.current || []) {
+        cuadrado(dep.x, dep.y, dep.radioAmenaza, 'rgba(225, 29, 72, 0.12)', 'rgba(225, 29, 72, 0.55)', [4, 4])
+        const ladoDep = Math.max(7, cellSize * 1.2)
+        ctx.fillStyle = '#e11d48'
+        ctx.fillRect(
+          camera.x + (dep.x + 0.5) * cellSize - ladoDep / 2,
+          camera.y + (dep.y + 0.5) * cellSize - ladoDep / 2,
+          ladoDep,
+          ladoDep,
+        )
       }
 
       // 3. Renderizado de entidades: Agregado vs Detallado (HU13)
@@ -381,13 +337,13 @@ export default function MapaEcosistema({
           const screenY = camera.y + cy * cellSize
 
           if (count >= 10) {
-            ctx.fillStyle = 'rgba(217, 70, 239, 0.90)'
+            ctx.fillStyle = '#FFFFFF'
           } else if (count >= 5) {
-            ctx.fillStyle = 'rgba(239, 68, 68, 0.85)'
+            ctx.fillStyle = 'rgba(225, 238, 243, 0.9)'
           } else if (count >= 2) {
-            ctx.fillStyle = 'rgba(249, 115, 22, 0.80)'
+            ctx.fillStyle = 'rgba(199, 228, 232, 0.65)'
           } else {
-            ctx.fillStyle = 'rgba(234, 179, 8, 0.75)'
+            ctx.fillStyle = 'rgba(199, 228, 232, 0.35)'
           }
 
           ctx.fillRect(screenX, screenY, cellSize, cellSize)
@@ -400,7 +356,7 @@ export default function MapaEcosistema({
             if (cellSize >= 16) {
               const fontSize = Math.min(11, Math.max(8, Math.floor(cellSize * 0.4)))
               ctx.font = `bold ${fontSize}px ui-monospace, Consolas, monospace`
-              ctx.fillStyle = '#ffffff'
+              ctx.fillStyle = '#0f1013'
               ctx.textAlign = 'center'
               ctx.textBaseline = 'middle'
               ctx.fillText(count, screenX + cellSize / 2, screenY + cellSize / 2)
@@ -408,7 +364,7 @@ export default function MapaEcosistema({
           }
         }
       } else {
-        ctx.fillStyle = '#e94560'
+        ctx.fillStyle = '#E1EEF3'
         const antRadius = Math.max(2, cellSize * 0.4)
         const cellCounts = cellSize >= 14 ? new Map() : null
 
@@ -433,7 +389,7 @@ export default function MapaEcosistema({
         if (cellCounts && cellSize >= 14) {
           const fontSize = Math.min(10, Math.max(8, Math.floor(cellSize * 0.35)))
           ctx.font = `bold ${fontSize}px ui-monospace, Consolas, monospace`
-          ctx.fillStyle = '#38bdf8'
+          ctx.fillStyle = '#C7E4E8'
           ctx.textAlign = 'right'
           ctx.textBaseline = 'bottom'
 

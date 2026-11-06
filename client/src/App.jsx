@@ -4,53 +4,32 @@ import './App.css'
 import ContadorAgentes from './components/ContadorAgentes.jsx'
 import MetricasInfraestructura from './components/MetricasInfraestructura.jsx'
 import MapaEcosistema from './components/MapaEcosistema.jsx'
+import LuminousCard from './components/LuminousCard.jsx'
+import NeumorphicButton from './components/NeumorphicButton.jsx'
 
-const crearAgentesMock = (n = 100) =>
-  Array.from({ length: n }, (_, id) => ({
-    id,
-    x: Math.max(0, Math.min(999, 500 + Math.floor(Math.random() * 60) - 30)),
-    y: Math.max(0, Math.min(999, 500 + Math.floor(Math.random() * 60) - 30)),
-  }))
+const UMBRAL_AGREGADO = 300
+const TICKS_POR_SEGUNDO = 10
 
-const crearRecursosMock = (n = 200) => {
-  const lista = []
-  let id = 1
-  const focos = [
-    { x: 500, y: 500, disp: 110, cant: Math.floor(n * 0.45) },
-    { x: 280, y: 280, disp: 70, cant: Math.floor(n * 0.15) },
-    { x: 720, y: 280, disp: 70, cant: Math.floor(n * 0.15) },
-    { x: 300, y: 720, disp: 70, cant: Math.floor(n * 0.12) },
-    { x: 720, y: 720, disp: 70, cant: Math.floor(n * 0.13) },
-  ]
-  for (const f of focos) {
-    for (let i = 0; i < f.cant; i++) {
-      lista.push({
-        id: id++,
-        x: Math.max(0, Math.min(999, Math.round(f.x + (Math.random() * 2 - 1) * f.disp))),
-        y: Math.max(0, Math.min(999, Math.round(f.y + (Math.random() * 2 - 1) * f.disp))),
-        valor: 1,
-      })
-    }
-  }
-  return lista
-}
+const formatearTiempo = (segundos) =>
+  [Math.floor(segundos / 3600), Math.floor(segundos / 60) % 60, segundos % 60]
+    .map(n => String(n).padStart(2, '0'))
+    .join(':')
 
 function App() {
   const [status, setStatus] = useState({ difusion: 'Desconectado', eventos: 'Verificando...' })
-  const [agentes, setAgentes] = useState(() => crearAgentesMock(100))
-  const [recursos, setRecursos] = useState(() => crearRecursosMock(200))
+  const [agentes, setAgentes] = useState([])
+  const [recursos, setRecursos] = useState([])
   const [depredadores, setDepredadores] = useState([])
   const [eventosActivos, setEventosActivos] = useState([])
+  const [comidaNido, setComidaNido] = useState(0)
   const [tick, setTick] = useState(0)
   const [replicasDecision, setReplicasDecision] = useState(1)
   const [replicasDifusion, setReplicasDifusion] = useState(1)
   const [camInfo, setCamInfo] = useState({ cellX: 500, cellY: 500, zoom: '0.50' })
   const [tps, setTps] = useState(0)
-  const [segundosTranscurridos, setSegundosTranscurridos] = useState(0)
+  const [segundosCorrida, setSegundosCorrida] = useState(0)
   const [duracionTickMs, setDuracionTickMs] = useState(0)
   const [saturado, setSaturado] = useState(false)
-  const [modoTestSaturado, setModoTestSaturado] = useState(false)
-  const [umbralAgregado, setUmbralAgregado] = useState(300)
 
   // Cooldowns de eventos (HU15, HU16, HU17)
   const [cooldownSequia, setCooldownSequia] = useState(0)
@@ -101,7 +80,6 @@ function App() {
     const intervalMetricas = setInterval(fetchMetricas, 2000)
 
     const timerInterval = setInterval(() => {
-      setSegundosTranscurridos(s => s + 1)
       setTps(ticksRecibidosRef.current)
       ticksRecibidosRef.current = 0
     }, 1000)
@@ -121,26 +99,18 @@ function App() {
 
     socket.on('mundo:estado', (data) => {
       ticksRecibidosRef.current += 1
-      if (Array.isArray(data?.agentes)) {
-        setAgentes(data.agentes)
-        setTick(data.tick || 0)
-      }
-      if (Array.isArray(data?.recursos)) {
-        setRecursos(data.recursos)
-      }
-      if (Array.isArray(data?.depredadores)) {
-        setDepredadores(data.depredadores)
-      }
-      if (Array.isArray(data?.eventosActivos)) {
-        setEventosActivos(data.eventosActivos)
-      }
-      if (typeof data?.duracionTickMs === 'number') {
-        setDuracionTickMs(data.duracionTickMs)
-        if (data.duracionTickMs > 150) {
-          setSaturado(true)
-        } else if (data.duracionTickMs < 100) {
-          setSaturado(false)
-        }
+      setAgentes(data.agentes)
+      setTick(data.tick)
+      setRecursos(data.recursos)
+      setDepredadores(data.depredadores)
+      setEventosActivos(data.eventosActivos)
+      setComidaNido(data.comidaNido)
+      setSegundosCorrida(data.segundos)
+      setDuracionTickMs(data.duracionTickMs)
+      if (data.duracionTickMs > 150) {
+        setSaturado(true)
+      } else if (data.duracionTickMs < 100) {
+        setSaturado(false)
       }
     })
 
@@ -151,105 +121,74 @@ function App() {
     }
   }, [])
 
-  // Movimiento local autonomo cuando el backend difusion no esta conectado
-  useEffect(() => {
-    if (status.difusion === 'Online') return
-    const interval = setInterval(() => {
-      setTick(t => t + 1)
-      setAgentes(prev =>
-        prev.map(a => ({
-          ...a,
-          x: Math.max(0, Math.min(999, a.x + Math.floor(Math.random() * 3) - 1)),
-          y: Math.max(0, Math.min(999, a.y + Math.floor(Math.random() * 3) - 1)),
-        }))
-      )
-      setDepredadores(prev =>
-        prev
-          .map(dep => ({
-            ...dep,
-            x: Math.max(0, Math.min(999, dep.x + Math.floor(Math.random() * 7) - 3)),
-            y: Math.max(0, Math.min(999, dep.y + Math.floor(Math.random() * 7) - 3)),
-            ticksRestantes: dep.ticksRestantes - 1,
-          }))
-          .filter(dep => dep.ticksRestantes > 0)
-      )
-    }, 500)
-    return () => clearInterval(interval)
-  }, [status.difusion])
-
-  const inyectarCarga = (cantidad) => {
-    fetch('/api/admin/spawn', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cantidad }),
-    }).catch(() => {})
-
-    if (status.difusion !== 'Online') {
-      setAgentes(prev => [
-        ...prev,
-        ...Array.from({ length: cantidad }, (_, i) => ({
-          id: prev.length + i,
-          x: Math.max(0, Math.min(999, 500 + Math.floor(Math.random() * 60) - 30)),
-          y: Math.max(0, Math.min(999, 500 + Math.floor(Math.random() * 60) - 30)),
-        }))
-      ])
-    }
+  const avisar = (texto) => {
+    setFeedbackEvento(texto)
+    setTimeout(() => setFeedbackEvento(''), 4000)
   }
 
-  const purgarCarga = (cantidad) => {
-    fetch('/api/admin/purge', {
+  const cambiarCarga = (ruta, cantidad) => {
+    fetch(ruta, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ cantidad }),
-    }).catch(() => {})
-
-    if (status.difusion !== 'Online') {
-      setAgentes(prev => prev.slice(0, Math.max(0, prev.length - cantidad)))
-    }
+    })
+      .then(r => {
+        if (!r.ok) throw new Error()
+      })
+      .catch(() => avisar('No se pudo cambiar la carga: el servidor no responde'))
   }
 
   // HU15, HU16, HU17: el servidor decide el cooldown; un fallo no lo arranca
   const dispararEvento = (tipo, setCooldown, mensaje) => {
-    const avisar = (texto) => {
-      setFeedbackEvento(texto)
-      setTimeout(() => setFeedbackEvento(''), 4000)
-    }
-
     fetch(`/api/eventos/${tipo}`, { method: 'POST' })
       .then(async r => {
         if (!r.ok && r.status !== 429) throw new Error()
         const d = await r.json()
         setCooldown(d.cooldownSegundos)
-        avisar(r.ok ? mensaje : `Otro usuario ya lo disparo: espera ${d.cooldownSegundos} s`)
+        avisar(r.ok ? mensaje : `Otro usuario ya lo disparó: espera ${d.cooldownSegundos} s`)
       })
       .catch(() => avisar('No se pudo disparar el evento: el servidor no responde'))
   }
 
-  const dispararSequia = () => dispararEvento('sequia', setCooldownSequia, '🌵 Sequía aplicada: recursos eliminados en la zona')
-  const dispararDepredador = () => dispararEvento('depredador', setCooldownDepredador, '🐍 Depredador invocado: las hormigas cercanas huyen')
-  const dispararAbundancia = () => dispararEvento('abundancia', setCooldownAbundancia, '🌿 Abundancia inyectada: terreno enriquecido con recursos')
-
-  const estaSaturado = saturado || modoTestSaturado
+  const segundosRestantes = (tipo) => {
+    const ticks = eventosActivos.filter(ev => ev.tipo === tipo).map(ev => ev.ticksRestantes)
+    return ticks.length ? Math.ceil(Math.max(...ticks) / TICKS_POR_SEGUNDO) : 0
+  }
+  const segundosSequia = segundosRestantes('sequia')
+  const segundosDepredador = segundosRestantes('depredador')
+  const modoAgregado = agentes.length > UMBRAL_AGREGADO
 
   return (
     <div className="app-viewport">
-      {/* Banner de alerta reactiva de saturacion (HU12) */}
-      {estaSaturado && (
-        <div className="alerta-saturacion-banner" role="alert">
-          <span className="alerta-icono">!</span>
-          <div className="alerta-texto">
-            <strong>ALERTA: SISTEMA SATURADO</strong>
-            <span>Tiempo de cálculo del tick: {modoTestSaturado ? 185 : duracionTickMs} ms (&gt; 150 ms). Estrangulamiento detectado.</span>
+      <div className="alertas">
+        {/* Banner de alerta reactiva de saturacion (HU12) */}
+        {saturado && (
+          <div className="alerta-saturacion-banner" role="alert">
+            <span className="alerta-icono">!</span>
+            <div className="alerta-texto">
+              <strong>ALERTA: SISTEMA SATURADO</strong>
+              <span>Tiempo de cálculo del tick: {duracionTickMs} ms (&gt; 150 ms). Estrangulamiento detectado.</span>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Toast de notificacion de eventos (HU15/HU16/HU17) */}
-      {feedbackEvento && (
-        <div className="alerta-evento-toast" role="status">
-          <span>{feedbackEvento}</span>
-        </div>
-      )}
+        {/* Banners de eventos activos (HU15, HU16) */}
+        {segundosSequia > 0 && (
+          <div className="alerta-evento-banner sequia" role="status">
+            Sequía activa ({segundosSequia} s): parches de comida eliminados
+          </div>
+        )}
+        {segundosDepredador > 0 && (
+          <div className="alerta-evento-banner depredador" role="status">
+            Depredador activo ({segundosDepredador} s): pánico en radio de 5 celdas
+          </div>
+        )}
+
+        {/* Resultado de la ultima accion del usuario */}
+        {feedbackEvento && (
+          <div className="alerta-evento-banner" role="status">{feedbackEvento}</div>
+        )}
+      </div>
 
       {/* Canvas del mundo 1000x1000 interactivo (fullscreen) */}
       <MapaEcosistema
@@ -259,7 +198,7 @@ function App() {
         eventosActivos={eventosActivos}
         ancho={1000}
         alto={1000}
-        umbralAgregado={umbralAgregado}
+        umbralAgregado={UMBRAL_AGREGADO}
         onCameraChange={setCamInfo}
       />
 
@@ -267,7 +206,7 @@ function App() {
       <div className="hud-container">
         {/* HUD Superior Izquierdo: Estado del Sistema */}
         <div className="hud-top-left hud-interactive">
-          <div className="hud-card">
+          <LuminousCard>
             <div className="hud-header">
               <span className="hud-title">Estado del Sistema</span>
               <span className={`hud-badge ${status.difusion === 'Online' ? '' : 'offline'}`}>
@@ -278,156 +217,126 @@ function App() {
             <ContadorAgentes agentes={agentes.length} />
 
             <div className="hud-row">
+              <span>Comida en nido:</span>
+              <span className="val texto-recurso">{comidaNido} uds</span>
+            </div>
+            <div className="hud-row">
               <span>Recursos visibles:</span>
-              <span className="val" style={{ color: '#34d399', fontWeight: 'bold' }}>
-                {recursos.length}
-              </span>
+              <span className="val">{recursos.length}</span>
             </div>
             <div className="hud-row">
               <span>Depredadores activos:</span>
-              <span className="val" style={{ color: '#a855f7', fontWeight: 'bold' }}>
-                {depredadores.length}
-              </span>
+              <span className="val">{depredadores.length}</span>
             </div>
-
-            <div className="hud-row">
+            <div className="hud-row hud-row-extra">
               <span>Modo del mapa:</span>
-              <span className={`val ${agentes.length > umbralAgregado ? 'texto-alerta' : ''}`}>
-                {agentes.length > umbralAgregado ? 'Agregado (Calor)' : 'Detallado (Sprites)'}
+              <span className={`val ${modoAgregado ? 'texto-alerta' : ''}`}>
+                {modoAgregado ? 'Agregado (Calor)' : 'Detallado (Sprites)'}
               </span>
             </div>
-            <div
-              className="hud-row cursor-clickable"
-              onClick={() => setUmbralAgregado(u => (u === 300 ? 150 : u === 150 ? 50 : 300))}
-              title="Haz clic para alternar el umbral (50, 150 o 300 agentes) para probar el cambio de modo (HU13)"
-            >
-              <span>Umbral agregación (HU13):</span>
-              <span className="val">{umbralAgregado}</span>
-            </div>
-
             <div className="hud-row">
               <span>Tiempo de corrida:</span>
-              <span className="val">{(() => {
-                const min = String(Math.floor(segundosTranscurridos / 60)).padStart(2, '0');
-                const seg = String(segundosTranscurridos % 60).padStart(2, '0');
-                const hrs = Math.floor(segundosTranscurridos / 3600);
-                return hrs > 0 ? `${hrs}:${min}:${seg}` : `00:${min}:${seg}`;
-              })()}</span>
+              <span className="val">{formatearTiempo(segundosCorrida)}</span>
             </div>
             <div className="hud-row">
               <span>Cadencia real (TPS):</span>
               <span className="val">{tps.toFixed(1)} tps</span>
             </div>
-            <div className="hud-row">
+            <div className="hud-row hud-row-extra">
               <span>Tick del motor:</span>
               <span className="val">{tick}</span>
             </div>
-            <div
-              className="hud-row cursor-clickable"
-              onClick={() => setModoTestSaturado(s => !s)}
-              title="Haz clic para probar la alerta de saturación (HU12)"
-            >
-              <span>Latencia cálculo tick:</span>
-              <span className={`val ${estaSaturado ? 'texto-alerta' : ''}`}>
-                {modoTestSaturado ? 185 : duracionTickMs} ms
-              </span>
-            </div>
             <div className="hud-row">
-              <span>Camara central:</span>
+              <span>Latencia cálculo tick:</span>
+              <span className={`val ${saturado ? 'texto-alerta' : ''}`}>{duracionTickMs} ms</span>
+            </div>
+            <div className="hud-row hud-row-extra">
+              <span>Cámara central:</span>
               <span className="val">[{camInfo.cellX}, {camInfo.cellY}]</span>
             </div>
-            <div className="hud-row">
+            <div className="hud-row hud-row-extra">
               <span>Escala (Zoom):</span>
               <span className="val">{camInfo.zoom}x</span>
             </div>
-
-            {/* HU18: Atributos de distribucion web nativa sin instalacion */}
-            <div className="hud-row">
-              <span>Motor gráfico (HU18):</span>
-              <span className="val" style={{ color: '#38bdf8' }}>Canvas 2D (Sin instalación)</span>
-            </div>
-            <div className="hud-row">
+            <div className="hud-row hud-row-extra">
               <span>Acceso espectador:</span>
-              <span className="val" style={{ color: '#34d399' }}>Público (Sin login)</span>
+              <span className="val">Público (sin login)</span>
             </div>
-          </div>
+          </LuminousCard>
         </div>
 
         {/* HUD Superior Derecho: Orquestacion Kubernetes */}
         <div className="hud-top-right hud-interactive">
-          <div className="hud-card">
+          <LuminousCard>
             <div className="hud-header">
               <span className="hud-title">Kubernetes (HPA)</span>
-              <span className="hud-badge">Namespace: default</span>
+              <span className="hud-badge hud-row-extra">Namespace: default</span>
             </div>
 
             <MetricasInfraestructura replicasDecision={replicasDecision} replicasDifusion={replicasDifusion} />
 
             <div className="hud-row">
               <span>Motor del mundo:</span>
-              <span className="val">1 replica (fija)</span>
+              <span className="val">1 réplica (fija)</span>
             </div>
             <div className="hud-row">
-              <span>Difusion (WS):</span>
+              <span>Difusión (WS):</span>
               <span className="val">{status.difusion}</span>
             </div>
             <div className="hud-row">
               <span>Eventos (REST):</span>
               <span className="val">{status.eventos}</span>
             </div>
-          </div>
+          </LuminousCard>
         </div>
 
-        {/* Panel Inferior Central: Controles de Carga y Eventos Ambientales */}
+        {/* Panel Inferior Central: Controles de Carga y Eventos */}
         <div className="hud-bottom-center hud-interactive">
-          <div className="hud-card action-bar">
-            <button
-              onClick={() => inyectarCarga(100)}
-              className="btn-action btn-spawn"
-              title="Inyecta 100 agentes en la simulación"
+          <LuminousCard className="action-bar">
+            <NeumorphicButton onClick={() => cambiarCarga('/api/admin/spawn', 100)} variant="spawn">
+              <span>Inyectar carga</span>
+              <span className="btn-subtext">(+100 agentes)</span>
+            </NeumorphicButton>
+            <NeumorphicButton onClick={() => cambiarCarga('/api/admin/purge', 100)} variant="purge">
+              <span>Purgar carga</span>
+              <span className="btn-subtext">(-100 agentes)</span>
+            </NeumorphicButton>
+            <NeumorphicButton
+              onClick={() => dispararEvento('sequia', setCooldownSequia, 'Sequía aplicada: recursos eliminados en la zona')}
+              cooldown={cooldownSequia}
+              cooldownMax={10}
+              variant="sequia"
+              nombre="Sequía"
+              title="Elimina la comida de una zona (HU15)"
             >
-              +100 agentes
-            </button>
-            <button
-              onClick={() => purgarCarga(100)}
-              className="btn-action btn-purge"
-              title="Purga 100 agentes de la simulación"
+              <span>Generar</span>
+              <span className="btn-subtext">Sequía</span>
+            </NeumorphicButton>
+            <NeumorphicButton
+              onClick={() => dispararEvento('depredador', setCooldownDepredador, 'Depredador invocado: las hormigas cercanas huyen')}
+              cooldown={cooldownDepredador}
+              cooldownMax={8}
+              variant="depredador"
+              nombre="Depredador"
+              title="Invoca un depredador temporal (HU16)"
             >
-              -100 agentes
-            </button>
-
-            {/* HU15: Boton interactivo de Sequia con Cooldown */}
-            <button
-              onClick={dispararSequia}
-              disabled={cooldownSequia > 0}
-              className={`btn-action btn-sequia ${cooldownSequia > 0 ? 'btn-disabled' : ''}`}
-              title="HU15: Provoca una sequía eliminando recursos de una zona designada. Cooldown: 10s"
+              <span>Invocar</span>
+              <span className="btn-subtext">Depredador</span>
+            </NeumorphicButton>
+            <NeumorphicButton
+              onClick={() => dispararEvento('abundancia', setCooldownAbundancia, 'Abundancia inyectada: el terreno tiene comida nueva')}
+              cooldown={cooldownAbundancia}
+              cooldownMax={6}
+              variant="abundancia"
+              nombre="Recursos"
+              title="Genera parches de comida (HU17)"
             >
-              {cooldownSequia > 0 ? `🌵 Sequía (${cooldownSequia}s)` : '🌵 Provocar Sequía'}
-            </button>
-
-            {/* HU16: Boton interactivo de Depredador con Cooldown */}
-            <button
-              onClick={dispararDepredador}
-              disabled={cooldownDepredador > 0}
-              className={`btn-action btn-depredador ${cooldownDepredador > 0 ? 'btn-disabled' : ''}`}
-              title="HU16: Invoca depredadores temporales que hacen huir a las hormigas cercanas. Cooldown: 12s"
-            >
-              {cooldownDepredador > 0 ? `🐍 Depredador (${cooldownDepredador}s)` : '🐍 Invocar Depredador'}
-            </button>
-
-            {/* HU17: Boton interactivo de Abundancia con Cooldown */}
-            <button
-              onClick={dispararAbundancia}
-              disabled={cooldownAbundancia > 0}
-              className={`btn-action btn-abundancia ${cooldownAbundancia > 0 ? 'btn-disabled' : ''}`}
-              title="HU17: Inyecta abundancia de recursos en el mapa y activa el estado de búsqueda en las hormigas. Cooldown: 10s"
-            >
-              {cooldownAbundancia > 0 ? `🌿 Abundancia (${cooldownAbundancia}s)` : '🌿 Abundancia'}
-            </button>
-          </div>
-          <div className="hud-tip">
-            Arrastra con el mouse para mover la camara | Rueda del mouse para zoom
+              <span>Brote</span>
+              <span className="btn-subtext">Recursos</span>
+            </NeumorphicButton>
+          </LuminousCard>
+          <div className="hud-tip hud-row-extra">
+            Arrastra para mover la cámara | Rueda del mouse para zoom
           </div>
         </div>
       </div>

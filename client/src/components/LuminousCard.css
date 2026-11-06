@@ -1,0 +1,82 @@
+/* Luminous Card HUD Frame with Frosted Glassmorphism
+   Palette: #E1EEF3, #232428, #939FA1, #C7E4E8, #FFFFFF */
+.luminous-card {
+  position: relative;
+  background: rgba(30, 32, 38, 0.72);
+  backdrop-filter: blur(16px) saturate(130%);
+  -webkit-backdrop-filter: blur(16px) saturate(130%);
+  box-shadow: inset 0 1px 1px 0 rgba(225, 238, 243, 0.2),
+    inset 0 0 16px 0 rgba(199, 228, 232, 0.04),
+    0 12px 32px -4px rgba(10, 11, 13, 0.7),
+    0 0 0 1px rgba(199, 228, 232, 0.28);
+  border-radius: 1.4rem;
+  color: #E1EEF3;
+  padding: 1.15rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.3s ease;
+  min-width: 270px;
+}
+
+.luminous-card::before {
+  content: "";
+  display: block;
+  --offset: 0.5rem;
+  width: calc(100% + 2 * var(--offset));
+  height: calc(100% + 2 * var(--offset));
+  position: absolute;
+  left: calc(-1 * var(--offset));
+  right: calc(-1 * var(--offset));
+  top: calc(-1 * var(--offset));
+  bottom: calc(-1 * var(--offset));
+  margin: auto;
+  box-shadow: inset 0 0 0 1px rgba(199, 228, 232, 0.32);
+  border-radius: 1.8rem;
+  --ax: 2.5rem;
+  clip-path: polygon(
+    var(--ax) 0,
+    0 0,
+    0 var(--ax),
+    var(--ax) var(--ax),
+    var(--ax) calc(100% - var(--ax)),
+    0 calc(100% - var(--ax)),
+    0 100%,
+    var(--ax) 100%,
+    var(--ax) calc(100% - var(--ax)),
+    calc(100% - var(--ax)) calc(100% - var(--ax)),
+    calc(100% - var(--ax)) 100%,
+    100% 100%,
+    100% calc(100% - var(--ax)),
+    calc(100% - var(--ax)) calc(100% - var(--ax)),
+    calc(100% - var(--ax)) var(--ax),
+    100% var(--ax),
+    100% 0,
+    calc(100% - var(--ax)) 0,
+    calc(100% - var(--ax)) var(--ax),
+    var(--ax) var(--ax)
+  );
+  transition: all 0.3s ease;
+  pointer-events: none;
+}
+
+.luminous-card:hover {
+  transform: translateY(-2px);
+  background: rgba(35, 38, 46, 0.82);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  box-shadow: inset 0 1px 1px 0 rgba(225, 238, 243, 0.35),
+    0 16px 40px -4px rgba(10, 11, 13, 0.85),
+    0 0 0 1px rgba(225, 238, 243, 0.55);
+}
+
+.luminous-card:hover::before {
+  --offset: 0.35rem;
+  --ax: 3.5rem;
+  box-shadow: inset 0 0 0 1px rgba(225, 238, 243, 0.55);
+}
+
+.luminous-content {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+}
