@@ -17,6 +17,7 @@ const agentes = Array.from({ length: N }, (_, id) => ({
     y: Math.max(0, Math.min(ALTO - 1, CENTRO_Y + Math.floor(Math.random() * 60) - 30)),
     estado: ESTADOS?.EXPLORANDO ?? 1,
 }));
+let siguienteId = N;
 console.log(`[Motor] Mundo 1000x1000 creado con ${agentes.length} agentes`);
 
 // Generacion inicial de recursos (alimento / parches de comida)
@@ -76,7 +77,7 @@ async function start() {
                     const count = Math.max(1, Number(cantidad) || 0);
                     for (let i = 0; i < count; i++) {
                         agentes.push({
-                            id: agentes.length,
+                            id: siguienteId++,
                             x: Math.max(0, Math.min(ANCHO - 1, CENTRO_X + Math.floor(Math.random() * 40) - 20)),
                             y: Math.max(0, Math.min(ALTO - 1, CENTRO_Y + Math.floor(Math.random() * 40) - 20)),
                             estado: ESTADOS?.EXPLORANDO ?? 1,
