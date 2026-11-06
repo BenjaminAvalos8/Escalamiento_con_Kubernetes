@@ -52,22 +52,24 @@ function App() {
   const [modoTestSaturado, setModoTestSaturado] = useState(false)
   const [umbralAgregado, setUmbralAgregado] = useState(300)
 
-  // HU15: Cooldown Sequia | HU16: Cooldown Depredador
+  // Cooldowns de eventos (HU15, HU16, HU17)
   const [cooldownSequia, setCooldownSequia] = useState(0)
   const [cooldownDepredador, setCooldownDepredador] = useState(0)
+  const [cooldownAbundancia, setCooldownAbundancia] = useState(0)
   const [feedbackEvento, setFeedbackEvento] = useState('')
 
   const ticksRecibidosRef = useRef(0)
 
   // Reloj de cuenta regresiva para cooldowns
   useEffect(() => {
-    if (cooldownSequia <= 0 && cooldownDepredador <= 0) return
+    if (cooldownSequia <= 0 && cooldownDepredador <= 0 && cooldownAbundancia <= 0) return
     const timer = setInterval(() => {
       setCooldownSequia(c => Math.max(0, c - 1))
       setCooldownDepredador(c => Math.max(0, c - 1))
+      setCooldownAbundancia(c => Math.max(0, c - 1))
     }, 1000)
     return () => clearInterval(timer)
-  }, [cooldownSequia, cooldownDepredador])
+  }, [cooldownSequia, cooldownDepredador, cooldownAbundancia])
 
   useEffect(() => {
     fetch('/health-eventos')
@@ -161,7 +163,6 @@ function App() {
           y: Math.max(0, Math.min(999, a.y + Math.floor(Math.random() * 3) - 1)),
         }))
       )
-      // HU16: Mover depredadores localmente y decrementar su vida
       setDepredadores(prev =>
         prev
           .map(dep => ({
@@ -231,7 +232,6 @@ function App() {
         setTimeout(() => setFeedbackEvento(''), 4000)
       })
 
-    // Modo autonomo/local para visualizacion inmediata
     if (status.difusion !== 'Online') {
       setCooldownSequia(10)
       setRecursos(prev =>
@@ -270,7 +270,6 @@ function App() {
         setTimeout(() => setFeedbackEvento(''), 4000)
       })
 
-    // Modo autonomo/local para visualizacion inmediata
     if (status.difusion !== 'Online') {
       setCooldownDepredador(12)
       const nuevosDeps = []
@@ -292,6 +291,51 @@ function App() {
     }
   }
 
+  // HU17: Funcion para disparar evento Abundancia de Recursos con Cooldown
+  const dispararAbundancia = () => {
+    if (cooldownAbundancia > 0) return
+
+    fetch('/api/eventos/abundancia', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cantidad: 120, zona: { x: 500, y: 500, radio: 180 } }),
+    })
+      .then(r => {
+        if (!r.ok) throw new Error()
+        return r.json()
+      })
+      .then(d => {
+        setCooldownAbundancia(d.cooldownSegundos || 10)
+        setFeedbackEvento('🌿 Abundancia inyectada: terreno enriquecido con recursos frescos')
+        setTimeout(() => setFeedbackEvento(''), 4000)
+      })
+      .catch(() => {
+        setCooldownAbundancia(10)
+        setFeedbackEvento('🌿 Abundancia aplicada en modo local')
+        setTimeout(() => setFeedbackEvento(''), 4000)
+      })
+
+    if (status.difusion !== 'Online') {
+      setCooldownAbundancia(10)
+      const nuevosRecursos = []
+      let nextId = Date.now()
+      for (let i = 0; i < 100; i++) {
+        const ang = Math.random() * Math.PI * 2
+        const dist = Math.random() * 160
+        nuevosRecursos.push({
+          id: nextId++,
+          x: Math.max(0, Math.min(999, Math.round(500 + Math.cos(ang) * dist))),
+          y: Math.max(0, Math.min(999, Math.round(500 + Math.sin(ang) * dist))),
+          valor: 1,
+        })
+      }
+      setRecursos(prev => [...prev, ...nuevosRecursos])
+      setEventosActivos(prev => [...prev, { tipo: 'abundancia', x: 500, y: 500, radio: 180, ticksRestantes: 25 }])
+      setFeedbackEvento('🌿 Abundancia aplicada en modo local: +100 recursos inyectados')
+      setTimeout(() => setFeedbackEvento(''), 4000)
+    }
+  }
+
   const estaSaturado = saturado || modoTestSaturado
 
   return (
@@ -307,7 +351,7 @@ function App() {
         </div>
       )}
 
-      {/* Toast de notificacion de evento (HU15/HU16) */}
+      {/* Toast de notificacion de eventos (HU15/HU16/HU17) */}
       {feedbackEvento && (
         <div className="alerta-evento-toast" role="status">
           <span>{feedbackEvento}</span>
@@ -467,6 +511,16 @@ function App() {
               title="HU16: Invoca depredadores temporales que hacen huir a las hormigas cercanas. Cooldown: 12s"
             >
               {cooldownDepredador > 0 ? `🐍 Depredador (${cooldownDepredador}s)` : '🐍 Invocar Depredador'}
+            </button>
+
+            {/* HU17: Boton interactivo de Abundancia con Cooldown */}
+            <button
+              onClick={dispararAbundancia}
+              disabled={cooldownAbundancia > 0}
+              className={`btn-action btn-abundancia ${cooldownAbundancia > 0 ? 'btn-disabled' : ''}`}
+              title="HU17: Inyecta abundancia de recursos en el mapa y activa el estado de búsqueda en las hormigas. Cooldown: 10s"
+            >
+              {cooldownAbundancia > 0 ? `🌿 Abundancia (${cooldownAbundancia}s)` : '🌿 Abundancia'}
             </button>
           </div>
           <div className="hud-tip">

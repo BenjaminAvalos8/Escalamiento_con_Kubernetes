@@ -163,6 +163,15 @@
   background: #6d28d9;
 }
 
+/* HU17: Estilos de boton de Abundancia */
+.btn-abundancia {
+  background: #059669;
+}
+
+.btn-abundancia:hover:not(:disabled) {
+  background: #047857;
+}
+
 .btn-disabled,
 .btn-action:disabled {
   background: #475569 !important;
@@ -240,7 +249,7 @@
   z-index: 50;
   padding: 8px 16px;
   background: rgba(30, 41, 59, 0.95);
-  border: 1px solid #d97706;
+  border: 1px solid #10b981;
   border-radius: 8px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
   color: #fef3c7;
