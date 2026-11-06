@@ -22,6 +22,8 @@ spec:
           image: anthill-motor:latest
           imagePullPolicy: IfNotPresent
           env:
+            - name: AGENTES_INICIALES
+              value: "100"
             - name: REDIS_HOST
               value: "redis-service"
             - name: REDIS_PORT
