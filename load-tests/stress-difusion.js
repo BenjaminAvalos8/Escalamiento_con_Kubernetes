@@ -1,90 +1,65 @@
+const { setTimeout: esperar } = require("node:timers/promises");
 const { io } = require("socket.io-client");
+const { configurar, registrarEscalones } = require("./mediciones");
 
-const TARGET_URL = process.env.TARGET_URL || process.argv[2] || "http://localhost:30080";
-const CONCURRENCIA = Math.max(1, parseInt(process.env.CONCURRENCIA || process.argv[3] || "150", 10));
+async function ejecutar() {
+  const config = configurar("espectadores", process.env.CONCURRENCIA || "150");
+  if (config.niveles.length === 1 && process.argv[4] === undefined) config.segundos = Infinity;
+  const { url, signal } = config;
+  const sockets = [];
+  let errores = 0;
+  let retardoWsMs;
+  const contar = () => sockets.filter((socket) => socket.connected).length;
 
-console.log("===============================================================================");
-console.log(`[HU11] Iniciando prueba de carga de espectadores concurrentes WebSocket`);
-console.log(`Destino:      ${TARGET_URL}`);
-console.log(`Espectadores: ${CONCURRENCIA}`);
-console.log(`Presiona Ctrl + C para detener la carga y observar el scale-down del HPA.`);
-console.log("===============================================================================\n");
+  function conectar() {
+    const esObservador = sockets.length === 0;
+    const socket = io(url.origin, {
+      path: "/socket.io",
+      transports: ["websocket"],
+      forceNew: true,
+      reconnectionDelay: 1000,
+      timeout: 5000,
+    });
+    socket.on("connect_error", () => { errores++; });
+    if (esObservador) {
+      socket.on("disconnect", () => { retardoWsMs = undefined; });
+      socket.on("mundo:estado", ({ emitidoEnMs }) => {
+        if (Number.isFinite(emitidoEnMs)) retardoWsMs = Date.now() - emitidoEnMs;
+      });
+    }
+    sockets.push(socket);
+  }
 
-const sockets = [];
-let conectados = 0;
-let errores = 0;
-let mensajesRecibidos = 0;
+  async function ajustar(objetivo) {
+    for (const socket of sockets.splice(objetivo)) socket.disconnect();
+    while (sockets.length < objetivo) {
+      const finLote = Math.min(objetivo, sockets.length + 20);
+      while (sockets.length < finLote) conectar();
+      if (sockets.length < objetivo) await esperar(100, undefined, { signal });
+    }
+    const limite = performance.now() + 45000;
+    while (contar() !== objetivo) {
+      if (performance.now() >= limite) {
+        throw new Error(`Se conectaron ${contar()} de ${objetivo} espectadores (${errores} errores)`);
+      }
+      await esperar(250, undefined, { signal });
+    }
+  }
 
-function conectarEspectador(index) {
-  const socket = io(TARGET_URL, {
-    path: "/socket.io",
-    transports: ["websocket", "polling"],
-    reconnection: true,
-    reconnectionAttempts: 5,
-    reconnectionDelay: 1000,
-    timeout: 5000,
-  });
-
-  socket.on("connect", () => {
-    conectados++;
-  });
-
-  socket.on("disconnect", () => {
-    if (conectados > 0) conectados--;
-  });
-
-  socket.on("connect_error", () => {
-    errores++;
-  });
-
-  socket.on("mundo:estado", () => {
-    mensajesRecibidos++;
-  });
-
-  sockets.push(socket);
+  try {
+    await registrarEscalones(config, ajustar, () => ({
+      sockets_conectados: contar(),
+      errores_de_conexion: errores,
+      retardo_ws_ms: retardoWsMs ?? null,
+    }));
+  } catch (error) {
+    if (!signal.aborted) throw error;
+  } finally {
+    for (const socket of sockets) socket.disconnect();
+  }
 }
 
-// Iniciar conexiones escalonadas para evitar saturar el loop local de sockets
-const BATCH_SIZE = 10;
-const INTERVALO_MS = 80;
-let iniciados = 0;
-
-const launchInterval = setInterval(() => {
-  const limite = Math.min(CONCURRENCIA, iniciados + BATCH_SIZE);
-  for (let i = iniciados; i < limite; i++) {
-    conectarEspectador(i);
-  }
-  iniciados = limite;
-
-  if (iniciados >= CONCURRENCIA) {
-    clearInterval(launchInterval);
-  }
-}, INTERVALO_MS);
-
-// Reporte de telemetria en consola cada 2 segundos
-const reporterInterval = setInterval(() => {
-  const porcentaje = Math.round((conectados / CONCURRENCIA) * 100);
-  console.log(
-    `[Telemetria] Conectados: ${conectados}/${CONCURRENCIA} (${porcentaje}%) | Errores: ${errores} | Ticks recibidos: ${mensajesRecibidos}`
-  );
-}, 2000);
-
-// Cierre ordenado para evaluar el periodo de enfriamiento (scaleDown)
-function detenerPrueba() {
-  console.log("\n[HU11] Deteniendo simulacion de carga...");
-  clearInterval(launchInterval);
-  clearInterval(reporterInterval);
-
-  for (const socket of sockets) {
-    try {
-      socket.disconnect();
-    } catch (_) {}
-  }
-
-  console.log("[HU11] Todos los espectadores desconectados.");
-  console.log("[HU11] Observa el dashboard o 'kubectl get hpa hpa-difusion' para verificar el scaleDown (aprox 15-30s).");
-  process.exit(0);
-}
-
-process.on("SIGINT", detenerPrueba);
-process.on("SIGTERM", detenerPrueba);
+ejecutar().catch((error) => {
+  console.error(error.message);
+  process.exitCode = 1;
+});

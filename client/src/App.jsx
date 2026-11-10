@@ -24,8 +24,7 @@ function App() {
   const [eventosActivos, setEventosActivos] = useState([])
   const [comidaNido, setComidaNido] = useState(0)
   const [tick, setTick] = useState(0)
-  const [replicasDecision, setReplicasDecision] = useState(1)
-  const [replicasDifusion, setReplicasDifusion] = useState(1)
+  const [infraestructura, setInfraestructura] = useState(null)
   const [camInfo, setCamInfo] = useState({ cellX: 500, cellY: 500, zoom: '0.50' })
   const [tps, setTps] = useState(0)
   const [segundosCorrida, setSegundosCorrida] = useState(0)
@@ -67,23 +66,19 @@ function App() {
           if (!r.ok) throw new Error()
           return r.json()
         })
-        .then(d => {
-          if (typeof d?.replicasDecision === 'number') {
-            setReplicasDecision(d.replicasDecision)
-          }
-          if (typeof d?.replicasDifusion === 'number') {
-            setReplicasDifusion(d.replicasDifusion)
-          }
-        })
-        .catch(() => {})
+        .then(setInfraestructura)
+        .catch(() => setInfraestructura(null))
     }
 
     fetchMetricas()
     const intervalMetricas = setInterval(fetchMetricas, 2000)
 
+    let inicioMuestra = performance.now()
     const timerInterval = setInterval(() => {
-      setTps(ticksRecibidosRef.current)
+      const ahora = performance.now()
+      setTps(ticksRecibidosRef.current * 1000 / (ahora - inicioMuestra))
       ticksRecibidosRef.current = 0
+      inicioMuestra = ahora
     }, 1000)
 
     const socket = io({
@@ -97,22 +92,26 @@ function App() {
 
     socket.on('disconnect', () => {
       setStatus(s => ({ ...s, difusion: 'Offline' }))
+      setSaturado(false)
     })
 
     socket.on('mundo:estado', (data) => {
+      if (!data) return
       ticksRecibidosRef.current += 1
-      setAgentes(data.agentes)
-      setTick(data.tick)
-      setRecursos(data.recursos)
-      setDepredadores(data.depredadores)
-      setEventosActivos(data.eventosActivos)
-      setComidaNido(data.comidaNido)
-      setSegundosCorrida(data.segundos)
-      setDuracionTickMs(data.duracionTickMs)
-      if (data.duracionTickMs > 150) {
-        setSaturado(true)
-      } else if (data.duracionTickMs < 100) {
-        setSaturado(false)
+      if (Array.isArray(data.agentes)) setAgentes(data.agentes)
+      if (typeof data.tick === 'number') setTick(data.tick)
+      if (Array.isArray(data.recursos)) setRecursos(data.recursos)
+      if (Array.isArray(data.depredadores)) setDepredadores(data.depredadores)
+      if (Array.isArray(data.eventosActivos)) setEventosActivos(data.eventosActivos)
+      if (typeof data.comidaNido === 'number') setComidaNido(data.comidaNido)
+      if (typeof data.segundos === 'number') setSegundosCorrida(data.segundos)
+      if (typeof data.duracionTickMs === 'number') {
+        setDuracionTickMs(data.duracionTickMs)
+        if (data.duracionTickMs > 150) {
+          setSaturado(true)
+        } else if (data.duracionTickMs < 100) {
+          setSaturado(false)
+        }
       }
     })
 
@@ -122,6 +121,98 @@ function App() {
       socket.disconnect()
     }
   }, [])
+
+  // HU22: Buffer de muestras temporales en cliente para exportacion local de reportes
+  const historicoMuestrasRef = useRef([])
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const espTotal = infraestructura?.espectadoresPorReplica?.reduce((s, r) => s + (r.espectadores || 0), 0) || 0
+      historicoMuestrasRef.current.push({
+        fecha_utc: new Date().toISOString(),
+        tiempo_segundos: segundosCorrida,
+        agentes_activos: agentes?.length || 0,
+        espectadores_activos: espTotal,
+        replicas_decision: infraestructura?.replicasDecision ?? 1,
+        replicas_difusion: infraestructura?.replicasDifusion ?? 1,
+        latencia_tick_ms: duracionTickMs,
+        tps: Number(tps.toFixed(1)),
+      })
+      if (historicoMuestrasRef.current.length > 3600) {
+        historicoMuestrasRef.current.shift()
+      }
+    }, 2000)
+    return () => clearInterval(timer)
+  }, [segundosCorrida, agentes?.length, infraestructura, duracionTickMs, tps])
+
+  const exportarReporte = async (formato = 'csv') => {
+    try {
+      const res = await fetch(`/api/metricas/reporte?formato=${formato}`)
+      if (res.ok) {
+        const blob = await res.blob()
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `reporte_escalamiento_${Date.now()}.${formato}`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+        avisar(`Reporte ${formato.toUpperCase()} descargado exitosamente`)
+        return
+      }
+    } catch (_) {}
+
+    // Fallback: generar archivo desde las muestras registradas en la sesion actual del navegador
+    const muestras = historicoMuestrasRef.current
+    if (!muestras.length) {
+      avisar('Sin datos para exportar aun')
+      return
+    }
+
+    let contenido = ''
+    let mime = 'text/csv'
+    if (formato === 'json') {
+      contenido = JSON.stringify(muestras, null, 2)
+      mime = 'application/json'
+    } else {
+      const columnas = [
+        'fecha_utc',
+        'tiempo_segundos',
+        'agentes_activos',
+        'espectadores_activos',
+        'replicas_decision',
+        'replicas_difusion',
+        'latencia_tick_ms',
+        'tps',
+      ]
+      const filas = [columnas.join(',')]
+      for (const m of muestras) {
+        filas.push([
+          m.fecha_utc,
+          m.tiempo_segundos,
+          m.agentes_activos,
+          m.espectadores_activos,
+          m.replicas_decision,
+          m.replicas_difusion,
+          m.latencia_tick_ms,
+          m.tps,
+        ].join(','))
+      }
+      contenido = filas.join('\n') + '\n'
+    }
+
+    const blob = new Blob([contenido], { type: `${mime};charset=utf-8;` })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `reporte_escalamiento_${Date.now()}.${formato}`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    avisar(`Reporte ${formato.toUpperCase()} descargado localmente`)
+  }
 
   const avisar = (texto) => {
     setFeedbackEvento(texto)
@@ -153,12 +244,13 @@ function App() {
   }
 
   const segundosRestantes = (tipo) => {
-    const ticks = eventosActivos.filter(ev => ev.tipo === tipo).map(ev => ev.ticksRestantes)
+    const lista = Array.isArray(eventosActivos) ? eventosActivos : []
+    const ticks = lista.filter(ev => ev && ev.tipo === tipo).map(ev => ev.ticksRestantes || 0)
     return ticks.length ? Math.ceil(Math.max(...ticks) / TICKS_POR_SEGUNDO) : 0
   }
   const segundosSequia = segundosRestantes('sequia')
   const segundosDepredador = segundosRestantes('depredador')
-  const calorForzado = agentes.length > UMBRAL_AGREGADO
+  const calorForzado = (agentes?.length || 0) > UMBRAL_AGREGADO
   const modoCalor = calorElegido || calorForzado
 
   return (
@@ -170,7 +262,7 @@ function App() {
             <span className="alerta-icono">!</span>
             <div className="alerta-texto">
               <strong>ALERTA: SISTEMA SATURADO</strong>
-              <span>Tiempo de cálculo del tick: {duracionTickMs} ms (&gt; 150 ms). Estrangulamiento detectado.</span>
+              <span>Tiempo de cálculo del tick: {duracionTickMs} ms. La alerta se despeja por debajo de 100 ms.</span>
             </div>
           </div>
         )}
@@ -178,12 +270,12 @@ function App() {
         {/* Banners de eventos activos (HU15, HU16) */}
         {segundosSequia > 0 && (
           <div className="alerta-evento-banner sequia" role="status">
-            Sequía activa ({segundosSequia} s): parches de comida eliminados
+            Sequía activa ({segundosSequia} s): las hormigas salen de la zona
           </div>
         )}
         {segundosDepredador > 0 && (
           <div className="alerta-evento-banner depredador" role="status">
-            Depredador activo ({segundosDepredador} s): pánico en radio de 5 celdas
+            Depredador activo ({segundosDepredador} s): persigue y captura hormigas fuera del nido
           </div>
         )}
 
@@ -217,19 +309,19 @@ function App() {
               </span>
             </div>
 
-            <ContadorAgentes agentes={agentes.length} />
+            <ContadorAgentes agentes={agentes?.length || 0} />
 
             <div className="hud-row">
               <span>Comida en nido:</span>
-              <span className="val texto-recurso">{comidaNido} uds</span>
+              <span className="val texto-recurso">{comidaNido || 0} uds</span>
             </div>
             <div className="hud-row">
               <span>Recursos visibles:</span>
-              <span className="val">{recursos.length}</span>
+              <span className="val">{recursos?.length || 0}</span>
             </div>
             <div className="hud-row">
               <span>Depredadores activos:</span>
-              <span className="val">{depredadores.length}</span>
+              <span className="val">{depredadores?.length || 0}</span>
             </div>
             <div className="hud-row hud-row-extra">
               <span>Modo del mapa:</span>
@@ -276,7 +368,7 @@ function App() {
               <span className="hud-badge hud-row-extra">Namespace: default</span>
             </div>
 
-            <MetricasInfraestructura replicasDecision={replicasDecision} replicasDifusion={replicasDifusion} />
+            <MetricasInfraestructura {...infraestructura} />
 
             <div className="hud-row">
               <span>Motor del mundo:</span>
@@ -290,6 +382,22 @@ function App() {
               <span>Eventos (REST):</span>
               <span className="val">{status.eventos}</span>
             </div>
+            <div className="hud-export-actions" style={{ marginTop: '10px', display: 'flex', gap: '8px' }}>
+              <button
+                className="btn-exportar"
+                onClick={() => exportarReporte('csv')}
+                title="Descargar métricas de la prueba de escalamiento en formato tabular CSV (HU22)"
+              >
+                📥 Exportar CSV
+              </button>
+              <button
+                className="btn-exportar"
+                onClick={() => exportarReporte('json')}
+                title="Descargar métricas de la prueba en formato JSON (HU22)"
+              >
+                📄 JSON
+              </button>
+            </div>
           </LuminousCard>
         </div>
 
@@ -299,6 +407,10 @@ function App() {
             <NeumorphicButton onClick={() => cambiarCarga('/api/admin/spawn', 100)} variant="spawn">
               <span>Inyectar carga</span>
               <span className="btn-subtext">(+100 agentes)</span>
+            </NeumorphicButton>
+            <NeumorphicButton onClick={() => cambiarCarga('/api/admin/spawn', 1000)} variant="spawn">
+              <span>Inyectar carga</span>
+              <span className="btn-subtext">(+1000 agentes)</span>
             </NeumorphicButton>
             <NeumorphicButton onClick={() => cambiarCarga('/api/admin/purge', 100)} variant="purge">
               <span>Purgar carga</span>

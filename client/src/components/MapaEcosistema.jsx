@@ -67,9 +67,11 @@ export default function MapaEcosistema({
 
     const currentMap = animAgentesRef.current
     const activeIds = new Set()
+    const lista = Array.isArray(agentes) ? agentes : []
 
-    for (let i = 0; i < agentes.length; i++) {
-      const a = agentes[i]
+    for (let i = 0; i < lista.length; i++) {
+      const a = lista[i]
+      if (!a) continue
       activeIds.add(a.id)
       const p = currentMap.get(a.id)
       if (!p) {
@@ -80,7 +82,7 @@ export default function MapaEcosistema({
       }
     }
 
-    if (currentMap.size > agentes.length) {
+    if (currentMap.size > lista.length) {
       for (const id of currentMap.keys()) {
         if (!activeIds.has(id)) {
           currentMap.delete(id)
@@ -294,10 +296,11 @@ export default function MapaEcosistema({
       }
 
       // Comida (HU17): un cuadrado por parche, con minimo visible al alejar el zoom
-      const ladoComida = Math.max(3, cellSize * 0.8)
-      ctx.fillStyle = '#34d399'
       for (const r of recursosListRef.current || []) {
         if (r.x >= startCol && r.x <= endCol && r.y >= startRow && r.y <= endRow) {
+          const ave = r.tipo === 'ave'
+          const ladoComida = ave ? Math.max(9, cellSize * 2) : Math.max(3, cellSize * 0.8)
+          ctx.fillStyle = ave ? '#fbbf24' : '#34d399'
           ctx.fillRect(
             camera.x + (r.x + 0.5) * cellSize - ladoComida / 2,
             camera.y + (r.y + 0.5) * cellSize - ladoComida / 2,
@@ -328,7 +331,7 @@ export default function MapaEcosistema({
 
       if (esModoAgregado) {
         const densidadPorCelda = new Map()
-        const rawAgentes = agentesListRef.current
+        const rawAgentes = Array.isArray(agentesListRef.current) ? agentesListRef.current : []
 
         for (let i = 0; i < rawAgentes.length; i++) {
           const a = rawAgentes[i]

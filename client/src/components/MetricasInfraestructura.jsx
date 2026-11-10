@@ -1,6 +1,6 @@
 import './MetricasInfraestructura.css'
 
-export default function MetricasInfraestructura({ replicasDecision = 1, replicasDifusion = 1 }) {
+export default function MetricasInfraestructura({ replicasDecision, replicasDifusion, espectadoresPorReplica = [] }) {
   return (
     <div className="hud-infra-embedded" aria-live="polite">
       <div className="hud-infra-fila">
@@ -15,6 +15,20 @@ export default function MetricasInfraestructura({ replicasDecision = 1, replicas
           {Number.isInteger(replicasDifusion) ? `${replicasDifusion} replica(s)` : '—'}
         </span>
       </div>
+      {espectadoresPorReplica.length > 0 && (
+        <ul className="hud-infra-replicas" aria-label="Espectadores por réplica de difusión">
+          {espectadoresPorReplica.map(({ replica, espectadores }) => (
+            <li key={replica} title={replica}>
+              <progress
+                aria-label={`Espectadores en ${replica}`}
+                value={espectadores}
+                max={Math.max(25, espectadores)}
+              />
+              <span>{replica.split('-').at(-1)} · {espectadores}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }

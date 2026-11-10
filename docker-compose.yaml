@@ -17,6 +17,7 @@ services:
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - SEMILLA_SIMULACION
     depends_on:
       - redis
 

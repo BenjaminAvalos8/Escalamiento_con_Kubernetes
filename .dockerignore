@@ -1,0 +1,5 @@
+.git
+**/node_modules
+client/dist
+load-tests/resultados
+**/.env

@@ -1,42 +1,50 @@
 const { crearClienteRedis } = require("@anthill/redis-config");
-const { CANALES_REDIS, TICKS_POR_PASO, decidir } = require("@anthill/shared-core");
+const { CANALES_REDIS, TICKS_POR_PASO, decidir, crearAzar } = require("@anthill/shared-core");
 
 const redis = crearClienteRedis();
 const redisCola = crearClienteRedis(); // BRPOP bloquea su conexion: va aparte para no frenar el heartbeat
 const workerId = process.env.HOSTNAME || `worker-${Math.random().toString(36).substring(2, 9)}`;
 
-// Azar derivado de tick e id (mulberry32): da igual que replica procese el lote
-function azarDe(tick, id) {
-  let s = (Math.imul(tick, 2654435761) ^ id) >>> 0;
-  return () => {
-    s = (s + 0x6d2b79f5) | 0;
-    let t = Math.imul(s ^ (s >>> 15), 1 | s);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+let cerrando = false;
 
 async function procesarLotes() {
-  for (;;) {
+  while (!cerrando) {
     try {
       const [, mensaje] = await redisCola.brpop(CANALES_REDIS.COLA_PENDIENTES, 0);
-      const { tick, agentes, depredadores, recursos, nido } = JSON.parse(mensaje);
-      const percepcion = { depredadores, recursos, nido };
+      const { tick, agentes, depredadores, recursos, nido, sequias, rastro, avisosSequia, semilla = 0 } = JSON.parse(mensaje);
+      const percepcion = { depredadores, recursos, nido, sequias, rastro, avisosSequia };
+      // El azar de cada hormiga es independiente de la replica que tome el lote.
+      const semillaTick = semilla ^ Math.imul(tick, 2654435761);
       const resueltos = agentes.map((a) =>
         // Sumar el id reparte los pasos entre ticks: no avanzan todas a la vez
-        decidir(a, percepcion, azarDe(tick, a.id), (tick + a.id) % TICKS_POR_PASO === 0)
+        decidir(a, percepcion, crearAzar(semillaTick ^ a.id), (tick + a.id) % TICKS_POR_PASO === 0)
       );
       await redis.lpush(CANALES_REDIS.COLA_RESUELTAS, JSON.stringify({ tick, agentes: resueltos }));
     } catch (err) {
-      console.error("[Decision] Error procesando lote:", err.message);
+      if (!cerrando) console.error("[Decision] Error procesando lote:", err.message);
     }
   }
 }
 
 console.log(`[Decision] Worker ${workerId} esperando lotes`);
 
-setInterval(() => {
+function publicarHeartbeat() {
   redis.set(`heartbeat:decision:${workerId}`, "1", "EX", 5).catch(() => {});
-}, 2000);
+}
+publicarHeartbeat();
+const heartbeat = setInterval(publicarHeartbeat, 2000);
 
-procesarLotes();
+async function cerrar() {
+  if (cerrando) return;
+  cerrando = true;
+  clearInterval(heartbeat);
+  redisCola.disconnect();
+  const limite = setTimeout(() => redis.disconnect(), 2000);
+  await tarea;
+  clearTimeout(limite);
+  redis.disconnect();
+}
+process.once("SIGTERM", cerrar);
+process.once("SIGINT", cerrar);
+
+const tarea = procesarLotes();
