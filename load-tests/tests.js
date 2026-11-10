@@ -16,3 +16,4 @@ module.exports = {
   stressDifusion: "./stress-difusion.js",
   stressAgentes: "./stress-agentes.js",
 };
+

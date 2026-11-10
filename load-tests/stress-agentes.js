@@ -153,3 +153,4 @@ process.on("SIGINT", detenerPrueba);
 process.on("SIGTERM", detenerPrueba);
 
 cicloPrueba();
+
