@@ -119,6 +119,98 @@ function App() {
     }
   }, [])
 
+  // HU22: Buffer de muestras temporales en cliente para exportacion local de reportes
+  const historicoMuestrasRef = useRef([])
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const espTotal = infraestructura?.espectadoresPorReplica?.reduce((s, r) => s + (r.espectadores || 0), 0) || 0
+      historicoMuestrasRef.current.push({
+        fecha_utc: new Date().toISOString(),
+        tiempo_segundos: segundosCorrida,
+        agentes_activos: agentes.length,
+        espectadores_activos: espTotal,
+        replicas_decision: infraestructura?.replicasDecision ?? 1,
+        replicas_difusion: infraestructura?.replicasDifusion ?? 1,
+        latencia_tick_ms: duracionTickMs,
+        tps: Number(tps.toFixed(1)),
+      })
+      if (historicoMuestrasRef.current.length > 3600) {
+        historicoMuestrasRef.current.shift()
+      }
+    }, 2000)
+    return () => clearInterval(timer)
+  }, [segundosCorrida, agentes.length, infraestructura, duracionTickMs, tps])
+
+  const exportarReporte = async (formato = 'csv') => {
+    try {
+      const res = await fetch(`/api/metricas/reporte?formato=${formato}`)
+      if (res.ok) {
+        const blob = await res.blob()
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `reporte_escalamiento_${Date.now()}.${formato}`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+        avisar(`Reporte ${formato.toUpperCase()} descargado exitosamente`)
+        return
+      }
+    } catch (_) {}
+
+    // Fallback: generar archivo desde las muestras registradas en la sesion actual del navegador
+    const muestras = historicoMuestrasRef.current
+    if (!muestras.length) {
+      avisar('Sin datos para exportar aun')
+      return
+    }
+
+    let contenido = ''
+    let mime = 'text/csv'
+    if (formato === 'json') {
+      contenido = JSON.stringify(muestras, null, 2)
+      mime = 'application/json'
+    } else {
+      const columnas = [
+        'fecha_utc',
+        'tiempo_segundos',
+        'agentes_activos',
+        'espectadores_activos',
+        'replicas_decision',
+        'replicas_difusion',
+        'latencia_tick_ms',
+        'tps',
+      ]
+      const filas = [columnas.join(',')]
+      for (const m of muestras) {
+        filas.push([
+          m.fecha_utc,
+          m.tiempo_segundos,
+          m.agentes_activos,
+          m.espectadores_activos,
+          m.replicas_decision,
+          m.replicas_difusion,
+          m.latencia_tick_ms,
+          m.tps,
+        ].join(','))
+      }
+      contenido = filas.join('\n') + '\n'
+    }
+
+    const blob = new Blob([contenido], { type: `${mime};charset=utf-8;` })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `reporte_escalamiento_${Date.now()}.${formato}`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    avisar(`Reporte ${formato.toUpperCase()} descargado localmente`)
+  }
+
   const avisar = (texto) => {
     setFeedbackEvento(texto)
     setTimeout(() => setFeedbackEvento(''), 4000)
@@ -285,6 +377,22 @@ function App() {
             <div className="hud-row">
               <span>Eventos (REST):</span>
               <span className="val">{status.eventos}</span>
+            </div>
+            <div className="hud-export-actions" style={{ marginTop: '10px', display: 'flex', gap: '8px' }}>
+              <button
+                className="btn-exportar"
+                onClick={() => exportarReporte('csv')}
+                title="Descargar métricas de la prueba de escalamiento en formato tabular CSV (HU22)"
+              >
+                📥 Exportar CSV
+              </button>
+              <button
+                className="btn-exportar"
+                onClick={() => exportarReporte('json')}
+                title="Descargar métricas de la prueba en formato JSON (HU22)"
+              >
+                📄 JSON
+              </button>
             </div>
           </LuminousCard>
         </div>
