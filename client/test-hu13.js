@@ -24,9 +24,9 @@ function calcularDensidadCeldas(agentes, rangoVisible) {
 }
 
 function obtenerColorTermico(densidad) {
-  if (densidad >= 10) return 'rgba(217, 70, 239, 0.90)'; // Magenta / punto critico
-  if (densidad >= 5)  return 'rgba(239, 68, 68, 0.85)';  // Rojo
-  if (densidad >= 2)  return 'rgba(249, 115, 22, 0.80)'; // Naranja
+  if (densidad >= 5) return 'rgba(217, 70, 239, 0.95)'; // Magenta / punto critico
+  if (densidad >= 3) return 'rgba(239, 68, 68, 0.90)';  // Rojo
+  if (densidad >= 2) return 'rgba(249, 115, 22, 0.85)'; // Naranja
   return 'rgba(234, 179, 8, 0.75)';                   // Amarillo
 }
 
@@ -77,7 +77,7 @@ assert.strictEqual(celdas.get('50,50'), 5, 'Fallo en conteo de celda concentrada
 assert.strictEqual(celdas.get('60,60'), 1, 'Fallo en conteo de celda unitaria');
 assert.strictEqual(celdas.has('999,999'), false, 'Culling fallido: celda fuera del viewport');
 
-assert.strictEqual(obtenerColorTermico(celdas.get('50,50')), 'rgba(239, 68, 68, 0.85)');
+assert.strictEqual(obtenerColorTermico(celdas.get('50,50')), 'rgba(217, 70, 239, 0.95)');
 assert.strictEqual(obtenerColorTermico(celdas.get('60,60')), 'rgba(234, 179, 8, 0.75)');
 
 console.log('[HU13 Test] Todos los criterios de aceptacion validados exitosamente.');

@@ -284,15 +284,15 @@ export default function MapaEcosistema({
           const screenX = camera.x + cx * cellSize
           const screenY = camera.y + cy * cellSize
 
-          // Escala de densidad: Amarillo -> Naranja -> Rojo -> Magenta
-          if (count >= 10) {
-            ctx.fillStyle = 'rgba(217, 70, 239, 0.90)'
-          } else if (count >= 5) {
-            ctx.fillStyle = 'rgba(239, 68, 68, 0.85)'
+          // Escala de densidad: Amarillo -> Naranja -> Rojo -> Magenta (calibrada para visibilidad realista)
+          if (count >= 5) {
+            ctx.fillStyle = 'rgba(217, 70, 239, 0.95)' // Magenta (punto critico / alta concentracion)
+          } else if (count >= 3) {
+            ctx.fillStyle = 'rgba(239, 68, 68, 0.90)'  // Rojo intenso
           } else if (count >= 2) {
-            ctx.fillStyle = 'rgba(249, 115, 22, 0.80)'
+            ctx.fillStyle = 'rgba(249, 115, 22, 0.85)' // Naranja brillante
           } else {
-            ctx.fillStyle = 'rgba(234, 179, 8, 0.75)'
+            ctx.fillStyle = 'rgba(234, 179, 8, 0.75)'  // Amarillo calido
           }
 
           ctx.fillRect(screenX, screenY, cellSize, cellSize)
