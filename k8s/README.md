@@ -35,7 +35,12 @@ El motor usa `SEMILLA_SIMULACION=42` en el manifiesto. Reinicia el motor con
 la misma semilla y cantidad inicial para repetir las posiciones de arranque.
 En Compose puedes definir la variable antes de levantar el motor. Sin ella,
 el arranque sigue siendo aleatorio. Para comparar una corrida con eventos,
-aplica los mismos eventos en el mismo orden y tick.
+aplica los mismos eventos en el mismo orden y tick. Para usar otra semilla
+sin editar el manifiesto (reinicia el motor):
+
+```powershell
+kubectl set env deployment/motor-deployment SEMILLA_SIMULACION=7
+```
 
 Para medir CPU en el clúster local, instala Metrics Server v0.8.0 (Kubernetes
 1.31 o superior) y comprueba que responde antes de iniciar una prueba. El
@@ -66,8 +71,17 @@ El retardo WebSocket de la prueba usa el reloj del motor y el del cliente.
 Ejecuta ambos en la misma máquina para compararlos. La latencia de tick
 proviene de `/metrics`; la CPU se registra en las muestras de la prueba.
 
-Abre el acceso a Prometheus en otra terminal y exporta con las fechas ISO
-de inicio y fin de la corrida. Conserva un CSV y un JSONL por repetición.
+Para el reporte (HU22) hay dos caminos. El más simple es el botón
+**Exportar CSV/JSON** del dashboard, o desde la terminal:
+
+```powershell
+node load-tests/exportar-metricas.js load-tests/resultados/corrida.csv
+```
+
+Ambos bajan el histórico que guarda el servicio de eventos (una muestra cada
+2 s, últimas 2 horas). Para un rango exacto desde Prometheus, abre el acceso
+en otra terminal y exporta con las fechas ISO de inicio y fin de la corrida.
+Conserva un CSV y un JSONL por repetición.
 
 ```powershell
 kubectl port-forward svc/prometheus 9090:9090

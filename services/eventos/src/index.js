@@ -11,28 +11,40 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
+// Lo mismo que lee Prometheus y lo que guarda el historico de HU22
+async function leerTelemetria() {
+  const [[agentes, latencia], clavesEsp, decision, difusion] = await Promise.all([
+    redis.mget("simulacion:agentes_activos", "simulacion:duracion_tick_ms"),
+    redis.keys("espectadores:*"),
+    redis.keys("heartbeat:decision:*"),
+    redis.keys("heartbeat:difusion:*"),
+  ]);
+  const valoresEsp = clavesEsp.length ? await redis.mget(clavesEsp) : [];
+  return {
+    agentes: Number(agentes) || 0,
+    espectadores: valoresEsp.reduce((suma, v) => suma + (parseInt(v, 10) || 0), 0),
+    replicasDecision: decision.length,
+    replicasDifusion: difusion.length,
+    // Sin motor no hay latencia: queda vacia en vez de 0
+    latencia: latencia === null ? null : Number(latencia),
+  };
+}
+
 app.get("/metrics", async (req, res) => {
   try {
-    const [[agentes, latencia], clavesEsp, decision, difusion] = await Promise.all([
-      redis.mget("simulacion:agentes_activos", "simulacion:duracion_tick_ms"),
-      redis.keys("espectadores:*"),
-      redis.keys("heartbeat:decision:*"),
-      redis.keys("heartbeat:difusion:*"),
-    ]);
-    const valoresEsp = clavesEsp.length ? await redis.mget(clavesEsp) : [];
-    const totalEsp = valoresEsp.reduce((suma, v) => suma + (parseInt(v, 10) || 0), 0);
+    const { agentes, espectadores, replicasDecision, replicasDifusion, latencia } = await leerTelemetria();
     res.setHeader("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
     res.send(
       "# HELP anthill_agentes_activos Cantidad de agentes simulados activos\n" +
       "# TYPE anthill_agentes_activos gauge\n" +
-      `anthill_agentes_activos ${Number(agentes)}\n` +
+      `anthill_agentes_activos ${agentes}\n` +
       "# HELP anthill_espectadores_activos Cantidad de espectadores websocket conectados\n" +
       "# TYPE anthill_espectadores_activos gauge\n" +
-      `anthill_espectadores_activos ${totalEsp}\n` +
+      `anthill_espectadores_activos ${espectadores}\n` +
       "# TYPE anthill_replicas_decision gauge\n" +
-      `anthill_replicas_decision ${decision.length}\n` +
+      `anthill_replicas_decision ${replicasDecision}\n` +
       "# TYPE anthill_replicas_difusion gauge\n" +
-      `anthill_replicas_difusion ${difusion.length}\n` +
+      `anthill_replicas_difusion ${replicasDifusion}\n` +
       "# TYPE anthill_duracion_tick_ms gauge\n" +
       (latencia === null ? "" : `anthill_duracion_tick_ms ${latencia}\n`)
     );
@@ -69,22 +81,14 @@ const MAX_HISTORICO = 3600; // Mantiene hasta 2 horas de muestras (1 c/2s)
 
 setInterval(async () => {
   try {
-    const [[agentes, latencia], clavesEsp, decision, difusion] = await Promise.all([
-      redis.mget("simulacion:agentes_activos", "simulacion:duracion_tick_ms"),
-      redis.keys("espectadores:*"),
-      redis.keys("heartbeat:decision:*"),
-      redis.keys("heartbeat:difusion:*"),
-    ]);
-    const valoresEsp = clavesEsp.length ? await redis.mget(clavesEsp) : [];
-    const totalEsp = valoresEsp.reduce((suma, v) => suma + (parseInt(v, 10) || 0), 0);
-
+    const t = await leerTelemetria();
     const muestra = {
       fecha_utc: new Date().toISOString(),
-      agentes_activos: Number(agentes) || 0,
-      espectadores_activos: totalEsp,
-      replicas_decision: decision.length,
-      replicas_difusion: difusion.length,
-      latencia_tick_ms: latencia !== null ? Number(latencia) : 0,
+      agentes_activos: t.agentes,
+      espectadores_activos: t.espectadores,
+      replicas_decision: t.replicasDecision,
+      replicas_difusion: t.replicasDifusion,
+      latencia_tick_ms: t.latencia,
     };
 
     await redis.rpush(CLAVE_HISTORICO, JSON.stringify(muestra));
@@ -103,7 +107,7 @@ app.get("/api/metricas/reporte", async (req, res) => {
 
     if (formato === "json") {
       res.setHeader("Content-Disposition", 'attachment; filename="reporte_escalamiento.json"');
-      return res.json(muestras);
+      return res.type("json").send(JSON.stringify(muestras, null, 2));
     }
 
     // CSV por defecto
@@ -123,7 +127,7 @@ app.get("/api/metricas/reporte", async (req, res) => {
         m.espectadores_activos,
         m.replicas_decision,
         m.replicas_difusion,
-        m.latencia_tick_ms,
+        m.latencia_tick_ms ?? "",
       ].join(","));
     }
 
@@ -161,8 +165,11 @@ app.post("/api/eventos/:tipo", async (req, res) => {
   }
 });
 
+// Tope por pedido: con el tunel publico cualquiera podria pedir millones y tumbar el motor
+const MAX_SPAWN = 10000;
+
 app.post("/api/admin/spawn", (req, res) => {
-  const count = Math.max(1, Number(req.body?.cantidad) || 50);
+  const count = Math.min(MAX_SPAWN, Math.max(1, Number(req.body?.cantidad) || 50));
   redis.publish("canal:eventos:spawn", JSON.stringify({ cantidad: count })).catch((err) => {
     console.error("[Eventos] Error publicando spawn a Redis:", err.message);
   });

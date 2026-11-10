@@ -159,23 +159,27 @@ async function start() {
             try {
                 const { duracionSegundos } = JSON.parse(message);
                 const zona = { x: CENTRO_X, y: CENTRO_Y, radio: 180 };
+                const nuevos = [];
                 for (let i = 0; i < PARCHES_ABUNDANCIA; i++) {
-                    recursos.push({
-                        id: siguienteRecursoId++,
+                    nuevos.push({
                         x: Math.round(zona.x + (azar() * 2 - 1) * zona.radio),
                         y: Math.round(zona.y + (azar() * 2 - 1) * zona.radio),
                         unidades: UNIDADES_POR_PARCHE,
                     });
                 }
                 const angulo = azar() * Math.PI * 2;
-                recursos.push({
-                    id: siguienteRecursoId++,
+                nuevos.push({
                     x: CENTRO_X + Math.round(Math.cos(angulo) * 45),
                     y: CENTRO_Y + Math.round(Math.sin(angulo) * 45),
                     tipo: "ave",
                     unidades: UNIDADES_POR_AVE,
                 });
-                console.log(`[Motor] Abundancia: +${PARCHES_ABUNDANCIA} parches y un ave. Total: ${recursos.length}`);
+                // En una sequia activa no brota comida
+                const sequias = eventosActivos.filter((ev) => ev.tipo === "sequia");
+                for (const r of nuevos) {
+                    if (!sequias.some((s) => distancia(r, s) <= s.radio)) recursos.push({ id: siguienteRecursoId++, ...r });
+                }
+                console.log(`[Motor] Abundancia: ${recursos.length} recursos en el mapa`);
                 eventosActivos.push({ tipo: 'abundancia', ...zona, ticksRestantes: segundosATicks(duracionSegundos) });
             } catch (e) {
                 console.error("[Motor] Error al procesar abundancia:", e.message);
@@ -283,7 +287,6 @@ async function start() {
 
         depredadores = depredadores.filter((dep) => --dep.ticksRestantes > 0);
         // Los eventos se aplican entre ticks, con el mundo y las colas en un estado consistente.
-        const poblacionAnterior = agentes.length;
         for (const [channel, message] of mensajes.splice(0)) aplicarEvento(channel, message);
         const { capturados, derrotados } = moverYCapturar(depredadores, agentes, NIDO);
         if (capturados.size) {
@@ -298,7 +301,6 @@ async function start() {
             eventosActivos = eventosActivos.filter(({ id }) => id !== dep.id);
             recursos.push({ id: siguienteRecursoId++, x: dep.x, y: dep.y, unidades: 30 });
         }
-        if (agentes.length !== poblacionAnterior) await redis.set("simulacion:agentes_activos", agentes.length);
 
         aplicarDecisiones(await repartirYRecoger());
 
@@ -314,7 +316,9 @@ async function start() {
             duracionTickMs,
             emitidoEnMs: Date.now(),
         });
+        // Cada tick, para que la metrica del HPA vuelva sola si Redis se reinicia
         await Promise.all([
+            redis.set("simulacion:agentes_activos", agentes.length),
             redis.set("simulacion:duracion_tick_ms", duracionTickMs, "EX", 5),
             redis.publish(CANALES_REDIS.MUNDO_ESTADO, payload),
         ]);

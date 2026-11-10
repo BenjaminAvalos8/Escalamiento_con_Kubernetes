@@ -58,6 +58,17 @@ export default function MapaEcosistema({
 
   const BASE_CELL = 12
 
+  // Cada borde del mundo puede entrar hasta un cuarto de pantalla; si el mundo es chico, queda centrado
+  const limitarCamara = useCallback((x, y) => {
+    const eje = (v, vista, celdas) => {
+      const lado = celdas * BASE_CELL * zoomRef.current
+      const min = vista * 0.75 - lado
+      const max = vista * 0.25
+      return min > max ? (vista - lado) / 2 : Math.min(max, Math.max(min, v))
+    }
+    return { x: eje(x, window.innerWidth, ancho), y: eje(y, window.innerHeight, alto) }
+  }, [ancho, alto])
+
   // Sincronizar objetivos de animacion cuando llegan nuevos datos del servidor
   useEffect(() => {
     if (modoCalorRef.current) {
@@ -114,9 +125,10 @@ export default function MapaEcosistema({
     if (!hasCenteredRef.current) {
       centerWorld()
     } else {
+      cameraRef.current = limitarCamara(cameraRef.current.x, cameraRef.current.y)
       setRenderTrigger(n => n + 1)
     }
-  }, [centerWorld])
+  }, [centerWorld, limitarCamara])
 
   useEffect(() => {
     resizeCanvas()
@@ -160,7 +172,7 @@ export default function MapaEcosistema({
       const newCamY = mouseY - (mouseY - currentCam.y) * (newZoom / currentZoom)
 
       zoomRef.current = newZoom
-      cameraRef.current = { x: newCamX, y: newCamY }
+      cameraRef.current = limitarCamara(newCamX, newCamY)
 
       notifyHUD()
       setRenderTrigger(n => n + 1)
@@ -168,7 +180,7 @@ export default function MapaEcosistema({
 
     canvas.addEventListener('wheel', handleWheelNative, { passive: false })
     return () => canvas.removeEventListener('wheel', handleWheelNative)
-  }, [notifyHUD])
+  }, [notifyHUD, limitarCamara])
 
   // Control de arrastre (Pan)
   const handlePointerDown = (e) => {
@@ -184,10 +196,10 @@ export default function MapaEcosistema({
 
   const handlePointerMove = (e) => {
     if (!isDraggingRef.current) return
-    cameraRef.current = {
-      x: e.clientX - dragStartRef.current.x,
-      y: e.clientY - dragStartRef.current.y,
-    }
+    cameraRef.current = limitarCamara(
+      e.clientX - dragStartRef.current.x,
+      e.clientY - dragStartRef.current.y,
+    )
     notifyHUD()
     setRenderTrigger(n => n + 1)
   }

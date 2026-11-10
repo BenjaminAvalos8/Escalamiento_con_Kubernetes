@@ -24,7 +24,7 @@ export default function MetricasInfraestructura({ replicasDecision, replicasDifu
                 value={espectadores}
                 max={Math.max(25, espectadores)}
               />
-              <span>{replica.split('-').at(-1)} · {espectadores}</span>
+              <span>{replica.split('-').at(-1)} · {espectadores}/25 espect.</span>
             </li>
           ))}
         </ul>
