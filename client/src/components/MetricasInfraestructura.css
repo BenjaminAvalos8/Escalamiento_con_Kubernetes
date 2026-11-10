@@ -27,3 +27,23 @@
   font-weight: 700;
   font-size: 14px;
 }
+
+.hud-infra-replicas {
+  max-height: 5rem;
+  overflow-y: auto;
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  font-size: 11px;
+}
+
+.hud-infra-replicas li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hud-infra-replicas progress {
+  width: 55%;
+  accent-color: #c084fc;
+}

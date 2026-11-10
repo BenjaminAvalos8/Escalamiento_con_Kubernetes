@@ -294,10 +294,11 @@ export default function MapaEcosistema({
       }
 
       // Comida (HU17): un cuadrado por parche, con minimo visible al alejar el zoom
-      const ladoComida = Math.max(3, cellSize * 0.8)
-      ctx.fillStyle = '#34d399'
       for (const r of recursosListRef.current || []) {
         if (r.x >= startCol && r.x <= endCol && r.y >= startRow && r.y <= endRow) {
+          const ave = r.tipo === 'ave'
+          const ladoComida = ave ? Math.max(9, cellSize * 2) : Math.max(3, cellSize * 0.8)
+          ctx.fillStyle = ave ? '#fbbf24' : '#34d399'
           ctx.fillRect(
             camera.x + (r.x + 0.5) * cellSize - ladoComida / 2,
             camera.y + (r.y + 0.5) * cellSize - ladoComida / 2,

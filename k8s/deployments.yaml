@@ -9,6 +9,8 @@ metadata:
     app: motor
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: motor
@@ -21,9 +23,14 @@ spec:
         - name: motor
           image: anthill-motor:latest
           imagePullPolicy: IfNotPresent
+          resources:
+            limits:
+              cpu: "1"
           env:
             - name: AGENTES_INICIALES
               value: "100"
+            - name: SEMILLA_SIMULACION
+              value: "42"
             - name: REDIS_HOST
               value: "redis-service"
             - name: REDIS_PORT

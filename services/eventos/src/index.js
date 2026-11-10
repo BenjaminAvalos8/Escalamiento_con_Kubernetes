@@ -13,19 +13,28 @@ app.get("/health", (req, res) => {
 
 app.get("/metrics", async (req, res) => {
   try {
-    const val = await redis.get("simulacion:agentes_activos");
-    const total = parseInt(val, 10) || 0;
-    const clavesEsp = await redis.keys("espectadores:*");
+    const [[agentes, latencia], clavesEsp, decision, difusion] = await Promise.all([
+      redis.mget("simulacion:agentes_activos", "simulacion:duracion_tick_ms"),
+      redis.keys("espectadores:*"),
+      redis.keys("heartbeat:decision:*"),
+      redis.keys("heartbeat:difusion:*"),
+    ]);
     const valoresEsp = clavesEsp.length ? await redis.mget(clavesEsp) : [];
     const totalEsp = valoresEsp.reduce((suma, v) => suma + (parseInt(v, 10) || 0), 0);
     res.setHeader("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
     res.send(
       "# HELP anthill_agentes_activos Cantidad de agentes simulados activos\n" +
       "# TYPE anthill_agentes_activos gauge\n" +
-      `anthill_agentes_activos ${total}\n` +
+      `anthill_agentes_activos ${Number(agentes)}\n` +
       "# HELP anthill_espectadores_activos Cantidad de espectadores websocket conectados\n" +
       "# TYPE anthill_espectadores_activos gauge\n" +
-      `anthill_espectadores_activos ${totalEsp}\n`
+      `anthill_espectadores_activos ${totalEsp}\n` +
+      "# TYPE anthill_replicas_decision gauge\n" +
+      `anthill_replicas_decision ${decision.length}\n` +
+      "# TYPE anthill_replicas_difusion gauge\n" +
+      `anthill_replicas_difusion ${difusion.length}\n` +
+      "# TYPE anthill_duracion_tick_ms gauge\n" +
+      (latencia === null ? "" : `anthill_duracion_tick_ms ${latencia}\n`)
     );
   } catch (err) {
     res.status(500).send("# ERROR\n");
@@ -34,14 +43,23 @@ app.get("/metrics", async (req, res) => {
 
 app.get("/api/metricas/infraestructura", async (req, res) => {
   try {
-    const keysDecision = await redis.keys("heartbeat:decision:*");
-    const keysDifusion = await redis.keys("heartbeat:difusion:*");
+    const [keysDecision, keysDifusion, clavesEsp] = await Promise.all([
+      redis.keys("heartbeat:decision:*"),
+      redis.keys("heartbeat:difusion:*"),
+      redis.keys("espectadores:*"),
+    ]);
+    const valoresEsp = clavesEsp.length ? await redis.mget(clavesEsp) : [];
+    const espectadoresPorReplica = clavesEsp.map((clave, i) => ({
+      replica: clave.slice("espectadores:".length),
+      espectadores: Number(valoresEsp[i]),
+    })).sort((a, b) => a.replica.localeCompare(b.replica));
     res.json({
-      replicasDecision: Math.max(1, keysDecision.length),
-      replicasDifusion: Math.max(1, keysDifusion.length),
+      replicasDecision: keysDecision.length,
+      replicasDifusion: keysDifusion.length,
+      espectadoresPorReplica,
     });
   } catch (err) {
-    res.json({ replicasDecision: 1, replicasDifusion: 1 });
+    res.status(503).json({ error: "Metricas no disponibles" });
   }
 });
 
@@ -89,6 +107,17 @@ app.post("/api/admin/purge", (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`[Eventos] Servidor API escuchando en el puerto ${PORT}`);
 });
+
+let cerrando = false;
+function cerrar() {
+  if (cerrando) return;
+  cerrando = true;
+  server.close();
+  redis.disconnect();
+  setTimeout(() => server.closeAllConnections(), 2000).unref();
+}
+process.once("SIGTERM", cerrar);
+process.once("SIGINT", cerrar);
