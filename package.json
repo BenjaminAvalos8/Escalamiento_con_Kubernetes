@@ -4,12 +4,14 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "stress:agentes": "node load-tests/stress-agentes.js",
+    "stress:difusion": "node load-tests/stress-difusion.js"
   },
   "keywords": [],
   "author": "",
   "license": "MIT",
-    "workspaces": [
+  "workspaces": [
     "services/*",
     "packages/*",
     "client"

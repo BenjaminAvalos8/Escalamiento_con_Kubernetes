@@ -1,3 +1,18 @@
-// TODO: Scripts de carga para pruebas de estrés
-// Aquí irán los archivos .js (K6 o Artillery) para inyectar agentes y saturar el motor
-// Referencia: Historias de Usuario HU20, HU21, HU22
+// ==============================================================================
+// Scripts de carga y pruebas de estrés
+// ==============================================================================
+// 1. stress-difusion.js (HU11):
+//    Inyección de espectadores WebSocket concurrentes para probar el
+//    autoescalado del microservicio de difusión con HPA.
+//    Uso: node load-tests/stress-difusion.js [URL] [CONCURRENCIA]
+//
+// 2. stress-agentes.js (HU20):
+//    Inyección masiva de agentes simulados para saturar el hilo serial
+//    del motor del mundo (Ley de Amdahl).
+//    Uso: node load-tests/stress-agentes.js [URL] [BATCH_SIZE] [TARGET_TOTAL]
+// ==============================================================================
+
+module.exports = {
+  stressDifusion: "./stress-difusion.js",
+  stressAgentes: "./stress-agentes.js",
+};
