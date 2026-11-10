@@ -67,9 +67,11 @@ export default function MapaEcosistema({
 
     const currentMap = animAgentesRef.current
     const activeIds = new Set()
+    const lista = Array.isArray(agentes) ? agentes : []
 
-    for (let i = 0; i < agentes.length; i++) {
-      const a = agentes[i]
+    for (let i = 0; i < lista.length; i++) {
+      const a = lista[i]
+      if (!a) continue
       activeIds.add(a.id)
       const p = currentMap.get(a.id)
       if (!p) {
@@ -80,7 +82,7 @@ export default function MapaEcosistema({
       }
     }
 
-    if (currentMap.size > agentes.length) {
+    if (currentMap.size > lista.length) {
       for (const id of currentMap.keys()) {
         if (!activeIds.has(id)) {
           currentMap.delete(id)
@@ -329,7 +331,7 @@ export default function MapaEcosistema({
 
       if (esModoAgregado) {
         const densidadPorCelda = new Map()
-        const rawAgentes = agentesListRef.current
+        const rawAgentes = Array.isArray(agentesListRef.current) ? agentesListRef.current : []
 
         for (let i = 0; i < rawAgentes.length; i++) {
           const a = rawAgentes[i]

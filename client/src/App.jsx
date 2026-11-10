@@ -96,19 +96,22 @@ function App() {
     })
 
     socket.on('mundo:estado', (data) => {
+      if (!data) return
       ticksRecibidosRef.current += 1
-      setAgentes(data.agentes)
-      setTick(data.tick)
-      setRecursos(data.recursos)
-      setDepredadores(data.depredadores)
-      setEventosActivos(data.eventosActivos)
-      setComidaNido(data.comidaNido)
-      setSegundosCorrida(data.segundos)
-      setDuracionTickMs(data.duracionTickMs)
-      if (data.duracionTickMs > 150) {
-        setSaturado(true)
-      } else if (data.duracionTickMs < 100) {
-        setSaturado(false)
+      if (Array.isArray(data.agentes)) setAgentes(data.agentes)
+      if (typeof data.tick === 'number') setTick(data.tick)
+      if (Array.isArray(data.recursos)) setRecursos(data.recursos)
+      if (Array.isArray(data.depredadores)) setDepredadores(data.depredadores)
+      if (Array.isArray(data.eventosActivos)) setEventosActivos(data.eventosActivos)
+      if (typeof data.comidaNido === 'number') setComidaNido(data.comidaNido)
+      if (typeof data.segundos === 'number') setSegundosCorrida(data.segundos)
+      if (typeof data.duracionTickMs === 'number') {
+        setDuracionTickMs(data.duracionTickMs)
+        if (data.duracionTickMs > 150) {
+          setSaturado(true)
+        } else if (data.duracionTickMs < 100) {
+          setSaturado(false)
+        }
       }
     })
 
@@ -128,7 +131,7 @@ function App() {
       historicoMuestrasRef.current.push({
         fecha_utc: new Date().toISOString(),
         tiempo_segundos: segundosCorrida,
-        agentes_activos: agentes.length,
+        agentes_activos: agentes?.length || 0,
         espectadores_activos: espTotal,
         replicas_decision: infraestructura?.replicasDecision ?? 1,
         replicas_difusion: infraestructura?.replicasDifusion ?? 1,
@@ -140,7 +143,7 @@ function App() {
       }
     }, 2000)
     return () => clearInterval(timer)
-  }, [segundosCorrida, agentes.length, infraestructura, duracionTickMs, tps])
+  }, [segundosCorrida, agentes?.length, infraestructura, duracionTickMs, tps])
 
   const exportarReporte = async (formato = 'csv') => {
     try {
@@ -241,12 +244,13 @@ function App() {
   }
 
   const segundosRestantes = (tipo) => {
-    const ticks = eventosActivos.filter(ev => ev.tipo === tipo).map(ev => ev.ticksRestantes)
+    const lista = Array.isArray(eventosActivos) ? eventosActivos : []
+    const ticks = lista.filter(ev => ev && ev.tipo === tipo).map(ev => ev.ticksRestantes || 0)
     return ticks.length ? Math.ceil(Math.max(...ticks) / TICKS_POR_SEGUNDO) : 0
   }
   const segundosSequia = segundosRestantes('sequia')
   const segundosDepredador = segundosRestantes('depredador')
-  const calorForzado = agentes.length > UMBRAL_AGREGADO
+  const calorForzado = (agentes?.length || 0) > UMBRAL_AGREGADO
   const modoCalor = calorElegido || calorForzado
 
   return (
@@ -305,19 +309,19 @@ function App() {
               </span>
             </div>
 
-            <ContadorAgentes agentes={agentes.length} />
+            <ContadorAgentes agentes={agentes?.length || 0} />
 
             <div className="hud-row">
               <span>Comida en nido:</span>
-              <span className="val texto-recurso">{comidaNido} uds</span>
+              <span className="val texto-recurso">{comidaNido || 0} uds</span>
             </div>
             <div className="hud-row">
               <span>Recursos visibles:</span>
-              <span className="val">{recursos.length}</span>
+              <span className="val">{recursos?.length || 0}</span>
             </div>
             <div className="hud-row">
               <span>Depredadores activos:</span>
-              <span className="val">{depredadores.length}</span>
+              <span className="val">{depredadores?.length || 0}</span>
             </div>
             <div className="hud-row hud-row-extra">
               <span>Modo del mapa:</span>

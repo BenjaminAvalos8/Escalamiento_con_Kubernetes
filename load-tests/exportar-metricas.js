@@ -71,18 +71,36 @@ async function exportarDesdePrometheus(start, end, archivo) {
 }
 
 async function exportarDesdeCluster(archivo) {
-  const target = process.env.TARGET_URL || "http://localhost:30080";
+  const candidatos = process.env.TARGET_URL
+    ? [process.env.TARGET_URL]
+    : ["http://localhost:8080", "http://localhost:3000", "http://localhost:30080"];
   const esJson = archivo.endsWith(".json");
   const formato = esJson ? "json" : "csv";
-  const url = new URL(`/api/metricas/reporte?formato=${formato}`, target);
 
-  console.log(`[HU22] Solicitando reporte historico a: ${url.toString()}...`);
-  const respuesta = await fetch(url, { signal: AbortSignal.timeout(15000) });
+  let respuesta;
+  let exitoUrl = null;
 
-  if (!respuesta.ok) {
-    throw new Error(`El servicio de metricas devolvio HTTP ${respuesta.status}`);
+  for (const base of candidatos) {
+    try {
+      const url = new URL(`/api/metricas/reporte?formato=${formato}`, base);
+      const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
+      if (res.ok) {
+        respuesta = res;
+        exitoUrl = url;
+        break;
+      }
+    } catch (_) {
+      // probar siguiente candidato
+    }
   }
 
+  if (!respuesta || !exitoUrl) {
+    throw new Error(
+      `No se pudo conectar al endpoint de métricas en ninguno de los destinos: ${candidatos.join(", ")}. Verifique que el servicio esté corriendo o defina TARGET_URL.`
+    );
+  }
+
+  console.log(`[HU22] Obteniendo reporte histórico desde: ${exitoUrl.toString()}...`);
   const contenido = await respuesta.text();
   await writeFile(archivo, contenido, { flag: "w" });
 
