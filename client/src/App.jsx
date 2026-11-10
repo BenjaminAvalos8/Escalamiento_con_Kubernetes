@@ -24,8 +24,7 @@ function App() {
   const [eventosActivos, setEventosActivos] = useState([])
   const [comidaNido, setComidaNido] = useState(0)
   const [tick, setTick] = useState(0)
-  const [replicasDecision, setReplicasDecision] = useState(1)
-  const [replicasDifusion, setReplicasDifusion] = useState(1)
+  const [infraestructura, setInfraestructura] = useState(null)
   const [camInfo, setCamInfo] = useState({ cellX: 500, cellY: 500, zoom: '0.50' })
   const [tps, setTps] = useState(0)
   const [segundosCorrida, setSegundosCorrida] = useState(0)
@@ -67,23 +66,19 @@ function App() {
           if (!r.ok) throw new Error()
           return r.json()
         })
-        .then(d => {
-          if (typeof d?.replicasDecision === 'number') {
-            setReplicasDecision(d.replicasDecision)
-          }
-          if (typeof d?.replicasDifusion === 'number') {
-            setReplicasDifusion(d.replicasDifusion)
-          }
-        })
-        .catch(() => {})
+        .then(setInfraestructura)
+        .catch(() => setInfraestructura(null))
     }
 
     fetchMetricas()
     const intervalMetricas = setInterval(fetchMetricas, 2000)
 
+    let inicioMuestra = performance.now()
     const timerInterval = setInterval(() => {
-      setTps(ticksRecibidosRef.current)
+      const ahora = performance.now()
+      setTps(ticksRecibidosRef.current * 1000 / (ahora - inicioMuestra))
       ticksRecibidosRef.current = 0
+      inicioMuestra = ahora
     }, 1000)
 
     const socket = io({
@@ -97,6 +92,7 @@ function App() {
 
     socket.on('disconnect', () => {
       setStatus(s => ({ ...s, difusion: 'Offline' }))
+      setSaturado(false)
     })
 
     socket.on('mundo:estado', (data) => {
@@ -170,7 +166,7 @@ function App() {
             <span className="alerta-icono">!</span>
             <div className="alerta-texto">
               <strong>ALERTA: SISTEMA SATURADO</strong>
-              <span>Tiempo de cálculo del tick: {duracionTickMs} ms (&gt; 150 ms). Estrangulamiento detectado.</span>
+              <span>Tiempo de cálculo del tick: {duracionTickMs} ms. La alerta se despeja por debajo de 100 ms.</span>
             </div>
           </div>
         )}
@@ -178,12 +174,12 @@ function App() {
         {/* Banners de eventos activos (HU15, HU16) */}
         {segundosSequia > 0 && (
           <div className="alerta-evento-banner sequia" role="status">
-            Sequía activa ({segundosSequia} s): parches de comida eliminados
+            Sequía activa ({segundosSequia} s): las hormigas salen de la zona
           </div>
         )}
         {segundosDepredador > 0 && (
           <div className="alerta-evento-banner depredador" role="status">
-            Depredador activo ({segundosDepredador} s): pánico en radio de 5 celdas
+            Depredador activo ({segundosDepredador} s): persigue y captura hormigas fuera del nido
           </div>
         )}
 
@@ -276,7 +272,7 @@ function App() {
               <span className="hud-badge hud-row-extra">Namespace: default</span>
             </div>
 
-            <MetricasInfraestructura replicasDecision={replicasDecision} replicasDifusion={replicasDifusion} />
+            <MetricasInfraestructura {...infraestructura} />
 
             <div className="hud-row">
               <span>Motor del mundo:</span>
@@ -299,6 +295,10 @@ function App() {
             <NeumorphicButton onClick={() => cambiarCarga('/api/admin/spawn', 100)} variant="spawn">
               <span>Inyectar carga</span>
               <span className="btn-subtext">(+100 agentes)</span>
+            </NeumorphicButton>
+            <NeumorphicButton onClick={() => cambiarCarga('/api/admin/spawn', 1000)} variant="spawn">
+              <span>Inyectar carga</span>
+              <span className="btn-subtext">(+1000 agentes)</span>
             </NeumorphicButton>
             <NeumorphicButton onClick={() => cambiarCarga('/api/admin/purge', 100)} variant="purge">
               <span>Purgar carga</span>
