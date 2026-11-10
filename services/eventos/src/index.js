@@ -63,6 +63,79 @@ app.get("/api/metricas/infraestructura", async (req, res) => {
   }
 });
 
+// HU22: Historico de telemetria en Redis para exportacion tabular (ejes X e Y)
+const CLAVE_HISTORICO = "simulacion:historico_metricas";
+const MAX_HISTORICO = 3600; // Mantiene hasta 2 horas de muestras (1 c/2s)
+
+setInterval(async () => {
+  try {
+    const [[agentes, latencia], clavesEsp, decision, difusion] = await Promise.all([
+      redis.mget("simulacion:agentes_activos", "simulacion:duracion_tick_ms"),
+      redis.keys("espectadores:*"),
+      redis.keys("heartbeat:decision:*"),
+      redis.keys("heartbeat:difusion:*"),
+    ]);
+    const valoresEsp = clavesEsp.length ? await redis.mget(clavesEsp) : [];
+    const totalEsp = valoresEsp.reduce((suma, v) => suma + (parseInt(v, 10) || 0), 0);
+
+    const muestra = {
+      fecha_utc: new Date().toISOString(),
+      agentes_activos: Number(agentes) || 0,
+      espectadores_activos: totalEsp,
+      replicas_decision: decision.length,
+      replicas_difusion: difusion.length,
+      latencia_tick_ms: latencia !== null ? Number(latencia) : 0,
+    };
+
+    await redis.rpush(CLAVE_HISTORICO, JSON.stringify(muestra));
+    await redis.ltrim(CLAVE_HISTORICO, -MAX_HISTORICO, -1);
+  } catch (_) {}
+}, 2000).unref();
+
+// HU22: Endpoint para descargar historicos en formato CSV o JSON (vía terminal o navegador)
+app.get("/api/metricas/reporte", async (req, res) => {
+  const formato = (req.query.formato || "csv").toLowerCase();
+  try {
+    const raw = await redis.lrange(CLAVE_HISTORICO, 0, -1);
+    const muestras = raw.map((r) => {
+      try { return JSON.parse(r); } catch (_) { return null; }
+    }).filter(Boolean);
+
+    if (formato === "json") {
+      res.setHeader("Content-Disposition", 'attachment; filename="reporte_escalamiento.json"');
+      return res.json(muestras);
+    }
+
+    // CSV por defecto
+    const columnas = [
+      "fecha_utc",
+      "agentes_activos",
+      "espectadores_activos",
+      "replicas_decision",
+      "replicas_difusion",
+      "latencia_tick_ms",
+    ];
+    const filas = [columnas.join(",")];
+    for (const m of muestras) {
+      filas.push([
+        m.fecha_utc,
+        m.agentes_activos,
+        m.espectadores_activos,
+        m.replicas_decision,
+        m.replicas_difusion,
+        m.latencia_tick_ms,
+      ].join(","));
+    }
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", 'attachment; filename="reporte_escalamiento.csv"');
+    res.send(filas.join("\n") + "\n");
+  } catch (err) {
+    console.error("[Eventos] Error generando reporte de metricas:", err.message);
+    res.status(500).json({ error: "Error al generar reporte de metricas" });
+  }
+});
+
 // HU15, HU16, HU17: cooldown en Redis (SET NX) para que valga para todos los usuarios
 const EVENTOS = {
   sequia: { canal: CANALES_REDIS.EVENTO_SEQUIA, cooldown: 10 },
