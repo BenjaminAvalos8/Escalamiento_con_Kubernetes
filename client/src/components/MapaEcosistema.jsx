@@ -150,6 +150,20 @@ export default function MapaEcosistema({
     }
   }, [onCameraChange, ancho, alto])
 
+  // Zoom alrededor de un punto de la pantalla (rueda del mouse o pellizco)
+  const zoomEn = useCallback((factor, x, y) => {
+    const zoomAnterior = zoomRef.current
+    const zoom = Math.min(Math.max(0.08, zoomAnterior * factor), 5.0)
+    const cam = cameraRef.current
+    zoomRef.current = zoom
+    cameraRef.current = limitarCamara(
+      x - (x - cam.x) * (zoom / zoomAnterior),
+      y - (y - cam.y) * (zoom / zoomAnterior),
+    )
+    notifyHUD()
+    setRenderTrigger(n => n + 1)
+  }, [limitarCamara, notifyHUD])
+
   // Manejo de Zoom no pasivo
   useEffect(() => {
     const canvas = canvasRef.current
@@ -158,43 +172,53 @@ export default function MapaEcosistema({
     const handleWheelNative = (e) => {
       e.preventDefault()
       e.stopPropagation()
-
-      const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85
-      const newZoom = Math.min(Math.max(0.08, zoomRef.current * zoomFactor), 5.0)
-
-      const mouseX = e.clientX
-      const mouseY = e.clientY
-
-      const currentCam = cameraRef.current
-      const currentZoom = zoomRef.current
-
-      const newCamX = mouseX - (mouseX - currentCam.x) * (newZoom / currentZoom)
-      const newCamY = mouseY - (mouseY - currentCam.y) * (newZoom / currentZoom)
-
-      zoomRef.current = newZoom
-      cameraRef.current = limitarCamara(newCamX, newCamY)
-
-      notifyHUD()
-      setRenderTrigger(n => n + 1)
+      zoomEn(e.deltaY < 0 ? 1.15 : 0.85, e.clientX, e.clientY)
     }
 
     canvas.addEventListener('wheel', handleWheelNative, { passive: false })
     return () => canvas.removeEventListener('wheel', handleWheelNative)
-  }, [notifyHUD, limitarCamara])
+  }, [zoomEn])
 
-  // Control de arrastre (Pan)
+  // Dedos (o mouse) apoyados sobre el mapa y ultimo pellizco medido
+  const punterosRef = useRef(new Map())
+  const pellizcoRef = useRef(null)
+
+  const empezarArrastre = (x, y) => {
+    isDraggingRef.current = true
+    setIsDraggingState(true)
+    dragStartRef.current = { x: x - cameraRef.current.x, y: y - cameraRef.current.y }
+  }
+
+  // Control de arrastre (Pan) y pellizco (zoom)
   const handlePointerDown = (e) => {
     if (e.button !== 0) return
     e.target.setPointerCapture(e.pointerId)
-    isDraggingRef.current = true
-    setIsDraggingState(true)
-    dragStartRef.current = {
-      x: e.clientX - cameraRef.current.x,
-      y: e.clientY - cameraRef.current.y,
-    }
+    punterosRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    if (punterosRef.current.size === 1) empezarArrastre(e.clientX, e.clientY)
   }
 
   const handlePointerMove = (e) => {
+    const punteros = punterosRef.current
+    if (!punteros.has(e.pointerId)) return
+    punteros.set(e.pointerId, { x: e.clientX, y: e.clientY })
+
+    if (punteros.size >= 2) {
+      const [a, b] = [...punteros.values()]
+      const actual = {
+        distancia: Math.hypot(a.x - b.x, a.y - b.y),
+        x: (a.x + b.x) / 2,
+        y: (a.y + b.y) / 2,
+      }
+      const previo = pellizcoRef.current
+      pellizcoRef.current = actual
+      if (!previo || previo.distancia === 0) return
+      // Mover con el centro de los dedos y acercar segun cuanto se separan
+      const cam = cameraRef.current
+      cameraRef.current = { x: cam.x + actual.x - previo.x, y: cam.y + actual.y - previo.y }
+      zoomEn(actual.distancia / previo.distancia, actual.x, actual.y)
+      return
+    }
+
     if (!isDraggingRef.current) return
     cameraRef.current = limitarCamara(
       e.clientX - dragStartRef.current.x,
@@ -205,12 +229,19 @@ export default function MapaEcosistema({
   }
 
   const handlePointerUp = (e) => {
-    if (isDraggingRef.current) {
+    const punteros = punterosRef.current
+    punteros.delete(e.pointerId)
+    pellizcoRef.current = null
+    try {
+      e.target.releasePointerCapture(e.pointerId)
+    } catch { /* ya estaba liberado */ }
+    if (punteros.size === 1) {
+      // Queda un dedo: sigue arrastrando desde donde esta, sin saltos
+      const [resto] = punteros.values()
+      empezarArrastre(resto.x, resto.y)
+    } else if (punteros.size === 0 && isDraggingRef.current) {
       isDraggingRef.current = false
       setIsDraggingState(false)
-      try {
-        e.target.releasePointerCapture(e.pointerId)
-      } catch { /* ya estaba liberado */ }
     }
   }
 

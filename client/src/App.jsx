@@ -6,6 +6,8 @@ import MetricasInfraestructura from './components/MetricasInfraestructura.jsx'
 import MapaEcosistema from './components/MapaEcosistema.jsx'
 import LuminousCard from './components/LuminousCard.jsx'
 import NeumorphicButton from './components/NeumorphicButton.jsx'
+import MenuDepredador from './components/MenuDepredador.jsx'
+import PanelDeslizable from './components/PanelDeslizable.jsx'
 
 // Por encima, el mapa pasa solo a calor para no saturar el navegador (HU13)
 const UMBRAL_AGREGADO = 5000
@@ -31,6 +33,10 @@ function App() {
   const [duracionTickMs, setDuracionTickMs] = useState(0)
   const [saturado, setSaturado] = useState(false)
   const [calorElegido, setCalorElegido] = useState(false)
+  // En celular: 'estado', 'k8s' o null; solo un panel abierto a la vez
+  const [panelMovil, setPanelMovil] = useState(null)
+  const [arrastrePanel, setArrastrePanel] = useState(0)
+  const alternarPanel = (panel) => setPanelMovil(p => (p === panel ? null : panel))
 
   // Cooldowns de eventos (HU15, HU16, HU17)
   const [cooldownSequia, setCooldownSequia] = useState(0)
@@ -157,8 +163,12 @@ function App() {
   }
 
   // HU15, HU16, HU17: el servidor decide el cooldown; un fallo no lo arranca
-  const dispararEvento = (tipo, setCooldown, mensaje) => {
-    fetch(`/api/eventos/${tipo}`, { method: 'POST' })
+  const dispararEvento = (tipo, setCooldown, mensaje, cuerpo = {}) => {
+    fetch(`/api/eventos/${tipo}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cuerpo),
+    })
       .then(async r => {
         if (!r.ok && r.status !== 429) throw new Error()
         const d = await r.json()
@@ -225,7 +235,36 @@ function App() {
       {/* Capa de interfaces flotantes (HUD) */}
       <div className="hud-container">
         {/* HUD Superior Izquierdo: Estado del Sistema */}
-        <div className="hud-top-left hud-interactive">
+        {/* Pestanas para abrir los paneles en celular */}
+        <div
+          className={`pestanas-panel hud-interactive ${panelMovil ? 'con-panel' : ''} ${arrastrePanel ? 'arrastrando' : ''}`}
+          style={arrastrePanel ? { '--arrastre': `${arrastrePanel}px` } : undefined}
+        >
+          <button
+            type="button"
+            className={`pestana-panel ${panelMovil === 'estado' ? 'activa' : ''}`}
+            aria-expanded={panelMovil === 'estado'}
+            onClick={() => alternarPanel('estado')}
+          >
+            Estado
+          </button>
+          <button
+            type="button"
+            className={`pestana-panel ${panelMovil === 'k8s' ? 'activa' : ''}`}
+            aria-expanded={panelMovil === 'k8s'}
+            onClick={() => alternarPanel('k8s')}
+          >
+            Kubernetes
+          </button>
+        </div>
+
+        <PanelDeslizable
+          className="hud-top-left hud-interactive panel-estado"
+          abierto={panelMovil === 'estado'}
+          onCerrar={() => setPanelMovil(null)}
+          arrastre={arrastrePanel}
+          onArrastre={setArrastrePanel}
+        >
           <LuminousCard>
             <div className="hud-header">
               <span className="hud-title">Estado del Sistema</span>
@@ -283,10 +322,16 @@ function App() {
               <span className="val">Público (sin login)</span>
             </div>
           </LuminousCard>
-        </div>
+        </PanelDeslizable>
 
         {/* HUD Superior Derecho: Orquestacion Kubernetes */}
-        <div className="hud-top-right hud-interactive">
+        <PanelDeslizable
+          className="hud-top-right hud-interactive"
+          abierto={panelMovil === 'k8s'}
+          onCerrar={() => setPanelMovil(null)}
+          arrastre={arrastrePanel}
+          onArrastre={setArrastrePanel}
+        >
           <LuminousCard>
             <div className="hud-header">
               <span className="hud-title">Kubernetes (HPA)</span>
@@ -326,7 +371,7 @@ function App() {
               </NeumorphicButton>
             </div>
           </LuminousCard>
-        </div>
+        </PanelDeslizable>
 
         {/* Panel Inferior Central: Controles de Carga y Eventos */}
         <div className="hud-bottom-center hud-interactive">
@@ -366,17 +411,16 @@ function App() {
               <span>Generar</span>
               <span className="btn-subtext">Sequía</span>
             </NeumorphicButton>
-            <NeumorphicButton
-              onClick={() => dispararEvento('depredador', setCooldownDepredador, 'Depredador invocado: las hormigas cercanas huyen')}
+            <MenuDepredador
               cooldown={cooldownDepredador}
               cooldownMax={8}
-              variant="depredador"
-              nombre="Depredador"
-              title="Invoca un depredador temporal (HU16)"
-            >
-              <span>Invocar</span>
-              <span className="btn-subtext">Depredador</span>
-            </NeumorphicButton>
+              onElegir={(cantidad) => dispararEvento(
+                'depredador',
+                setCooldownDepredador,
+                cantidad === 1 ? 'Depredador invocado: las hormigas cercanas huyen' : `${cantidad} depredadores invocados: las hormigas cercanas huyen`,
+                { cantidad },
+              )}
+            />
             <NeumorphicButton
               onClick={() => dispararEvento('abundancia', setCooldownAbundancia, 'Abundancia inyectada: el terreno tiene comida nueva')}
               cooldown={cooldownAbundancia}

@@ -1,0 +1,82 @@
+/* Burbujas basadas en el menu radial de Uiverse.io (20essentials) */
+.menu-depredador {
+  --burbuja: 42px;
+  position: relative;
+  display: inline-flex;
+}
+
+/* Abierto: el boton queda hundido, igual que en cooldown */
+.menu-depredador .neumorphic-button.is-pulsado {
+  transform: translateY(1px);
+  filter: none;
+  box-shadow: inset 4px 4px 10px #111215, inset -2px -2px 6px rgba(225, 29, 72, 0.25);
+}
+
+.burbuja-depredador {
+  position: absolute;
+  left: calc(50% - var(--burbuja) / 2);
+  top: calc(50% - var(--burbuja) / 2);
+  width: var(--burbuja);
+  height: var(--burbuja);
+  /* Mismo estilo que el boton Invocar Depredador */
+  background: linear-gradient(145deg, #461f2b, #2d141c);
+  border: 1px solid #e11d48;
+  border-radius: 50%;
+  box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.55), -2px -2px 8px rgba(225, 29, 72, 0.15);
+  color: #FFFFFF;
+  font: 800 16px ui-monospace, Consolas, monospace;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+  z-index: 20;
+  opacity: 0;
+  pointer-events: none;
+  /* Cerrado: escondida detras del boton */
+  transform: rotate(0deg) translateX(0) rotate(0deg) scale(0.2);
+  transition: transform 0.5s ease, opacity 0.3s ease;
+  transition-delay: calc(0.1s * (2 - var(--i)));
+}
+
+/* El brillo rojo crece de 1 a 5 */
+.burbuja-depredador:nth-of-type(1) { --brillo: rgba(225, 29, 72, 0.3); }
+.burbuja-depredador:nth-of-type(2) { --brillo: rgba(225, 29, 72, 0.55); }
+.burbuja-depredador:nth-of-type(3) { --brillo: rgba(225, 29, 72, 0.85); }
+
+.burbuja-depredador::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--brillo);
+  border-radius: inherit;
+  z-index: -1;
+  filter: blur(14px);
+  transition: inset 0.2s ease;
+}
+
+.burbuja-depredador:hover {
+  filter: brightness(1.15);
+}
+
+.burbuja-depredador:hover::before {
+  inset: -7px;
+}
+
+.burbuja-depredador:focus-visible {
+  outline: 2px solid #FFFFFF;
+  outline-offset: 3px;
+}
+
+/* Abierto: cada burbuja gira alrededor del boton hasta su lugar, una tras otra */
+.menu-depredador.abierto .burbuja-depredador {
+  opacity: 1;
+  pointer-events: auto;
+  transform: rotate(var(--a)) translateX(var(--r)) rotate(calc(var(--a) * -1)) scale(1);
+  transition-delay: calc(0.1s * var(--i));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .burbuja-depredador,
+  .menu-depredador.abierto .burbuja-depredador {
+    transition: opacity 0.15s ease;
+    transition-delay: 0s;
+  }
+}

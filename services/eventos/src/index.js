@@ -156,7 +156,9 @@ app.post("/api/eventos/:tipo", async (req, res) => {
     if (!(await redis.set(clave, "1", "EX", cooldown, "NX"))) {
       return res.status(429).json({ error: "Evento en enfriamiento", cooldownSegundos: Math.max(1, await redis.ttl(clave)) });
     }
-    await redis.publish(canal, JSON.stringify({ tipo, duracionSegundos: cooldown }));
+    // Solo el depredador usa la cantidad (1, 3 o 5); el tope protege al motor
+    const cantidad = Math.min(5, Math.max(1, Math.floor(Number(req.body?.cantidad)) || 1));
+    await redis.publish(canal, JSON.stringify({ tipo, duracionSegundos: cooldown, cantidad }));
     console.log(`[Eventos] Evento ${tipo} publicado`);
     res.json({ status: "ok", evento: tipo, cooldownSegundos: cooldown });
   } catch (err) {

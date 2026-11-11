@@ -20,7 +20,7 @@ const ANCHO = 1000, ALTO = 1000;
 const CENTRO_X = 500, CENTRO_Y = 500;
 const NIDO = { x: CENTRO_X, y: CENTRO_Y, radio: 20 };
 const TICK_MS = 100;
-const MAX_DEPREDADORES = 4;
+const MAX_DEPREDADORES = 5;
 const PARCHES_ABUNDANCIA = 120;
 const UNIDADES_POR_PARCHE = 5;
 const UNIDADES_POR_AVE = 300;
@@ -132,25 +132,27 @@ async function start() {
                 console.error("[Motor] Error al procesar sequia:", e.message);
             }
         } else if (channel === canalDepredador) {
-            // HU16: Un depredador cerca de la colonia; con 4 activos sale el mas antiguo
+            // HU16: 1, 3 o 5 depredadores cerca de la colonia; con 5 activos sale el mas antiguo
             try {
-                const { duracionSegundos } = JSON.parse(message);
-                if (depredadores.length >= MAX_DEPREDADORES) {
-                    const viejo = depredadores.shift();
-                    eventosActivos = eventosActivos.filter((ev) => ev.id !== viejo.id);
+                const { duracionSegundos, cantidad = 1 } = JSON.parse(message);
+                for (let i = 0; i < cantidad; i++) {
+                    if (depredadores.length >= MAX_DEPREDADORES) {
+                        const viejo = depredadores.shift();
+                        eventosActivos = eventosActivos.filter((ev) => ev.id !== viejo.id);
+                    }
+                    const angulo = azar() * Math.PI * 2;
+                    const dist = NIDO.radio + 20 + azar() * 60;
+                    const dep = {
+                        id: `dep-${siguienteDepredadorId++}`,
+                        x: Math.round(CENTRO_X + Math.cos(angulo) * dist),
+                        y: Math.round(CENTRO_Y + Math.sin(angulo) * dist),
+                        ticksRestantes: segundosATicks(duracionSegundos),
+                        radioAmenaza: RADIO_PANICO,
+                    };
+                    depredadores.push(dep);
+                    eventosActivos.push({ id: dep.id, tipo: 'depredador', x: dep.x, y: dep.y, radio: RADIO_PANICO, ticksRestantes: dep.ticksRestantes });
                 }
-                const angulo = azar() * Math.PI * 2;
-                const dist = NIDO.radio + 20 + azar() * 60;
-                const dep = {
-                    id: `dep-${siguienteDepredadorId++}`,
-                    x: Math.round(CENTRO_X + Math.cos(angulo) * dist),
-                    y: Math.round(CENTRO_Y + Math.sin(angulo) * dist),
-                    ticksRestantes: segundosATicks(duracionSegundos),
-                    radioAmenaza: RADIO_PANICO,
-                };
-                depredadores.push(dep);
-                console.log(`[Motor] Depredador en (${dep.x}, ${dep.y}). Activos: ${depredadores.length}`);
-                eventosActivos.push({ id: dep.id, tipo: 'depredador', x: dep.x, y: dep.y, radio: RADIO_PANICO, ticksRestantes: dep.ticksRestantes });
+                console.log(`[Motor] +${cantidad} depredador(es). Activos: ${depredadores.length}`);
             } catch (e) {
                 console.error("[Motor] Error al procesar depredador:", e.message);
             }

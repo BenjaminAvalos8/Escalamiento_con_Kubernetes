@@ -7,6 +7,8 @@
   display: block;
   cursor: grab;
   z-index: 0;
+  /* El navegador no hace su propio zoom ni scroll: los gestos los maneja el mapa */
+  touch-action: none;
 }
 
 .mapa-canvas-full.dragging {
